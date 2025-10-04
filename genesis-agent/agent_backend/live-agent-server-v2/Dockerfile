@@ -1,0 +1,22 @@
+# Use an official, secure, and slim Python runtime as a parent image
+FROM python:3.9-slim
+
+# Set the working directory inside the container
+WORKDIR /app
+
+# Copy the dependencies file first to leverage Docker layer caching
+COPY requirements.txt .
+
+# Install the dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of the application source code
+COPY . .
+
+# Cloud Run provides the PORT environment variable, so we expose it
+ENV PORT 8080
+
+# Define the command to run the application using a production-ready server
+# Uvicorn will manage the Gunicorn worker process for robust performance.
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8080"]

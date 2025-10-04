@@ -1,0 +1,23 @@
+{
+  "pages": {
+    "/chat/page": [
+      "static/chunks/5f4c5_next_dist_6f9ceea4._.js",
+      "static/chunks/Agent master _genesis-agent_cortex-chat-ui_src_app_favicon_ico_mjs_ebeba48e._.js",
+      "static/chunks/[root-of-the-server]__d2e5ea97._.css",
+      "static/chunks/Agent master _genesis-agent_cortex-chat-ui_src_app_layout_tsx_7321788e._.js",
+      "static/chunks/5f4c5_next_dist_client_components_builtin_global-error_d0074611.js",
+      "static/chunks/Agent master _genesis-agent_cortex-chat-ui_src_e0f5ad73._.js",
+      "static/chunks/5f4c5_0d570c4e._.js",
+      "static/chunks/Agent master _genesis-agent_cortex-chat-ui_src_app_chat_page_tsx_d0074611._.js",
+      "static/chunks/[turbopack]_browser_dev_hmr-client_hmr-client_ts_18bb3897._.js",
+      "static/chunks/5f4c5_next_dist_compiled_react-dom_f8bcbc0b._.js",
+      "static/chunks/5f4c5_next_dist_compiled_next-devtools_index_da2945d3.js",
+      "static/chunks/5f4c5_next_dist_compiled_279fec62._.js",
+      "static/chunks/5f4c5_next_dist_client_69a3bd7c._.js",
+      "static/chunks/5f4c5_next_dist_3cb5fa88._.js",
+      "static/chunks/5f4c5_@swc_helpers_cjs_40c278a7._.js",
+      "static/chunks/Agent master _genesis-agent_cortex-chat-ui_a0ff3932._.js",
+      "static/chunks/turbopack-Agent master _genesis-agent_cortex-chat-ui_feea6979._.js"
+    ]
+  }
+}

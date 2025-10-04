@@ -1,0 +1,24 @@
+{
+  "topics": {
+    "Error: js_error:console": {
+      "entries": [
+        {
+          "knowledge": "TypeError: 'str' object is not callable\n\nSolution: Changed msg.text() to msg.text - it's a property not a method\n\nContext: Playwright browser testing",
+          "source": "self_learning",
+          "timestamp": "2025-10-03T15:52:12.604966"
+        }
+      ],
+      "created": "2025-10-03T15:52:12.604962",
+      "updated": "2025-10-03T15:52:12.604968",
+      "update_count": 1
+    }
+  },
+  "patterns": {},
+  "best_practices": {},
+  "tools": {},
+  "statistics": {
+    "total_topics": 1,
+    "total_updates": 1,
+    "last_updated": "2025-10-03T15:52:12.604969"
+  }
+}

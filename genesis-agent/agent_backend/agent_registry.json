@@ -1,0 +1,126 @@
+{
+  "meta_agent": "projects/1096519851619/locations/us-central1/reasoningEngines/1641654423153278976",
+  "specialist_agents": {
+    "WorkspaceManager": {
+      "resource_name": "projects/1096519851619/locations/us-central1/reasoningEngines/1173280061906747392",
+      "endpoint": "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/1096519851619/locations/us-central1/reasoningEngines/1173280061906747392:query",
+      "description": "WorkspaceManager specialist agent"
+    },
+    "VisionAnalyzer": {
+      "resource_name": "projects/1096519851619/locations/us-central1/reasoningEngines/6937887584940982272",
+      "endpoint": "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/1096519851619/locations/us-central1/reasoningEngines/6937887584940982272:query",
+      "description": "VisionAnalyzer specialist agent"
+    },
+    "VersionController": {
+      "resource_name": "projects/1096519851619/locations/us-central1/reasoningEngines/891805085196091392",
+      "endpoint": "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/1096519851619/locations/us-central1/reasoningEngines/891805085196091392:query",
+      "description": "VersionController specialist agent"
+    },
+    "WebSearcher": {
+      "resource_name": "projects/1096519851619/locations/us-central1/reasoningEngines/2283417370053574656",
+      "endpoint": "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/1096519851619/locations/us-central1/reasoningEngines/2283417370053574656:query",
+      "description": "WebSearcher specialist agent"
+    },
+    "PerformanceMonitor": {
+      "resource_name": "projects/1096519851619/locations/us-central1/reasoningEngines/3571446863481536512",
+      "endpoint": "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/1096519851619/locations/us-central1/reasoningEngines/3571446863481536512:query",
+      "description": "PerformanceMonitor specialist agent"
+    },
+    "SecurityGuard": {
+      "resource_name": "projects/1096519851619/locations/us-central1/reasoningEngines/2326201566513594368",
+      "endpoint": "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/1096519851619/locations/us-central1/reasoningEngines/2326201566513594368:query",
+      "description": "SecurityGuard specialist agent"
+    },
+    "NoteKeeper": {
+      "resource_name": "projects/1096519851619/locations/us-central1/reasoningEngines/4632044575727288320",
+      "endpoint": "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/1096519851619/locations/us-central1/reasoningEngines/4632044575727288320:query",
+      "description": "NoteKeeper specialist agent"
+    },
+    "NotebookScientist": {
+      "resource_name": "projects/1096519851619/locations/us-central1/reasoningEngines/837550783435112448",
+      "endpoint": "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/1096519851619/locations/us-central1/reasoningEngines/837550783435112448:query",
+      "description": "NotebookScientist specialist agent"
+    },
+    "PersonalAssistant": {
+      "resource_name": "projects/1096519851619/locations/us-central1/reasoningEngines/5271555722813898752",
+      "endpoint": "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/1096519851619/locations/us-central1/reasoningEngines/5271555722813898752:query",
+      "description": "PersonalAssistant specialist agent"
+    },
+    "ErrorHandler": {
+      "resource_name": "projects/1096519851619/locations/us-central1/reasoningEngines/8385794865140596736",
+      "endpoint": "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/1096519851619/locations/us-central1/reasoningEngines/8385794865140596736:query",
+      "description": "ErrorHandler specialist agent"
+    },
+    "MediaProcessor": {
+      "resource_name": "projects/1096519851619/locations/us-central1/reasoningEngines/8534202546611290112",
+      "endpoint": "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/1096519851619/locations/us-central1/reasoningEngines/8534202546611290112:query",
+      "description": "MediaProcessor specialist agent"
+    },
+    "KnowledgeBase": {
+      "resource_name": "projects/1096519851619/locations/us-central1/reasoningEngines/399575719673331712",
+      "endpoint": "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/1096519851619/locations/us-central1/reasoningEngines/399575719673331712:query",
+      "description": "KnowledgeBase specialist agent"
+    },
+    "EmailManager": {
+      "resource_name": "projects/1096519851619/locations/us-central1/reasoningEngines/5877289872695230464",
+      "endpoint": "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/1096519851619/locations/us-central1/reasoningEngines/5877289872695230464:query",
+      "description": "EmailManager specialist agent"
+    },
+    "DocumentParser": {
+      "resource_name": "projects/1096519851619/locations/us-central1/reasoningEngines/1265603854267842560",
+      "endpoint": "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/1096519851619/locations/us-central1/reasoningEngines/1265603854267842560:query",
+      "description": "DocumentParser specialist agent"
+    },
+    "DatabaseExpert": {
+      "resource_name": "projects/1096519851619/locations/us-central1/reasoningEngines/3262950289006657536",
+      "endpoint": "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/1096519851619/locations/us-central1/reasoningEngines/3262950289006657536:query",
+      "description": "DatabaseExpert specialist agent"
+    },
+    "DataProcessor": {
+      "resource_name": "projects/1096519851619/locations/us-central1/reasoningEngines/8153859484331016192",
+      "endpoint": "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/1096519851619/locations/us-central1/reasoningEngines/8153859484331016192:query",
+      "description": "DataProcessor specialist agent"
+    },
+    "CloudExpert": {
+      "resource_name": "projects/1096519851619/locations/us-central1/reasoningEngines/434689723017986048",
+      "endpoint": "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/1096519851619/locations/us-central1/reasoningEngines/434689723017986048:query",
+      "description": "CloudExpert specialist agent"
+    },
+    "AutomationWizard": {
+      "resource_name": "projects/1096519851619/locations/us-central1/reasoningEngines/6145042944291241984",
+      "endpoint": "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/1096519851619/locations/us-central1/reasoningEngines/6145042944291241984:query",
+      "description": "AutomationWizard specialist agent"
+    },
+    "CalendarManager": {
+      "resource_name": "projects/1096519851619/locations/us-central1/reasoningEngines/6818331088583131136",
+      "endpoint": "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/1096519851619/locations/us-central1/reasoningEngines/6818331088583131136:query",
+      "description": "CalendarManager specialist agent"
+    },
+    "ApiIntegrator": {
+      "resource_name": "projects/1096519851619/locations/us-central1/reasoningEngines/558538712770674688",
+      "endpoint": "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/1096519851619/locations/us-central1/reasoningEngines/558538712770674688:query",
+      "description": "ApiIntegrator specialist agent"
+    },
+    "BackupManager": {
+      "resource_name": "projects/1096519851619/locations/us-central1/reasoningEngines/3999288828081733632",
+      "endpoint": "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/1096519851619/locations/us-central1/reasoningEngines/3999288828081733632:query",
+      "description": "BackupManager specialist agent"
+    },
+    "CodeMaster": {
+      "resource_name": "projects/1096519851619/locations/us-central1/reasoningEngines/9119881604401987584",
+      "endpoint": "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/1096519851619/locations/us-central1/reasoningEngines/9119881604401987584:query",
+      "description": "CodeMaster specialist agent"
+    },
+    "FileManager": {
+      "resource_name": "projects/1096519851619/locations/us-central1/reasoningEngines/112471243428462592",
+      "endpoint": "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/1096519851619/locations/us-central1/reasoningEngines/112471243428462592:query",
+      "description": "FileManager specialist agent"
+    }
+  },
+  "orchestrator": {
+    "resource_name": "projects/1096519851619/locations/us-central1/reasoningEngines/1749740814210170880",
+    "display_name": "Cortex Orchestrator",
+    "model": "gemini-2.5-flash",
+    "description": "Meta-orchestrator coordinating 23 specialist agents"
+  }
+}

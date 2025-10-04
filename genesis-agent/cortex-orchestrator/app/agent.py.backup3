@@ -1,0 +1,394 @@
+"""
+Cortex OS Orchestrator - Coordinates 23 Specialist Agents
+
+DOCUMENTATION SOURCE: codemaster-agent/notebooks/adk_app_testing.ipynb lines 66, 106, 115-118
+- Uses vertexai.Client to query deployed agents
+- Each specialist is a tool this orchestrator can invoke
+"""
+
+import json
+import os
+import asyncio
+from typing import Dict, Any
+import vertexai
+from google.adk.agents import Agent
+from google.adk.tools import ToolContext
+
+# Load specialist agent registry
+REGISTRY_PATH = os.path.join(os.path.dirname(__file__), "agent_registry.json")
+with open(REGISTRY_PATH) as f:
+    AGENT_REGISTRY = json.load(f)
+
+PROJECT_ID = "studio-2416451423-f2d96"
+LOCATION = "us-central1"
+
+# Initialize Vertex AI client (from documentation line 66)
+vertexai_client = vertexai.Client(location=LOCATION)
+
+
+# ===== HELPER FUNCTION =====
+def query_agent_sync(agent_name: str, task: str) -> dict:
+    """
+    Synchronous wrapper for async agent queries.
+    
+    Per ADK documentation (GEMINI.md line 846): Tools must return dict, not str.
+    """
+    try:
+        agent_info = AGENT_REGISTRY["specialist_agents"][agent_name]
+        remote_agent = vertexai_client.agent_engines.get(name=agent_info["resource_name"])
+        
+        response_text = ""
+        
+        # Run async query synchronously
+        async def _query():
+            nonlocal response_text
+            async for event in remote_agent.async_stream_query(message=task, user_id="orchestrator"):
+                if 'content' in event and 'parts' in event['content']:
+                    for part in event['content']['parts']:
+                        if 'text' in part:
+                            response_text += part['text']
+        
+        asyncio.run(_query())
+        
+        return {
+            "status": "success",
+            "agent": agent_name,
+            "response": response_text or f"{agent_name} responded but no text was found."
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "agent": agent_name,
+            "error_message": str(e)
+        }
+
+
+# ===== SPECIALIST AGENT TOOLS =====
+# Each tool calls a deployed specialist agent
+
+def call_codemaster(task: str, tool_context: ToolContext = None) -> dict:
+    """
+    Expert in coding, debugging, APIs, databases, and software architecture.
+    Use for: writing code, fixing bugs, explaining code, database queries, API integrations.
+    
+    Args:
+        task: The coding task or question
+        
+    Returns:
+        dict: Contains the specialist's response with keys 'status', 'agent', 'response' or 'error_message'.
+    """
+    return query_agent_sync("CodeMaster", task)
+
+
+def call_cloud_expert(task: str, tool_context: ToolContext = None) -> str:
+    """
+    Expert in Google Cloud Platform: Vertex AI, Cloud Run, BigQuery, Cloud Storage, IAM, monitoring.
+    Use for: GCP services, cloud deployments, infrastructure, billing, permissions.
+    
+    Args:
+        task: The cloud infrastructure task or question
+    """
+    return query_agent_sync("CloudExpert", task)
+
+def call_database_expert(task: str, tool_context: ToolContext = None) -> str:
+    """
+    Expert in databases: Firestore, Cloud SQL, BigQuery, database design, optimization.
+    Use for: database queries, schema design, data modeling, database optimization.
+    
+    Args:
+        task: The database task or question
+    """
+    return query_agent_sync("DatabaseExpert", task)
+
+def call_automation_wizard(task: str, tool_context: ToolContext = None) -> str:
+    """
+    Expert in automation: Cloud Functions, workflows, scheduled tasks, CI/CD.
+    Use for: automating tasks, setting up workflows, deployment pipelines.
+    
+    Args:
+        task: The automation task or question
+    """
+    return query_agent_sync("AutomationWizard", task)
+
+def call_api_integrator(task: str, tool_context: ToolContext = None) -> str:
+    """
+    Expert in API integrations: REST APIs, webhooks, third-party services, OpenAI, Claude.
+    Use for: connecting external APIs, webhook setup, API authentication.
+    
+    Args:
+        task: The API integration task or question
+    """
+    return query_agent_sync("ApiIntegrator", task)
+
+def call_web_searcher(query: str, tool_context: ToolContext = None) -> str:
+    """
+    Expert in web search and research: finding information, competitive analysis, news monitoring.
+    Use for: searching the web, researching topics, finding current information.
+    
+    Args:
+        query: The search query or research question
+    """
+    return query_agent_sync("WebSearcher", task)
+
+def call_media_processor(task: str, tool_context: ToolContext = None) -> str:
+    """
+    Expert in media processing: video/audio analysis, transcription, image processing.
+    Use for: analyzing videos, transcribing audio, processing images.
+    
+    Args:
+        task: The media processing task
+    """
+    return query_agent_sync("MediaProcessor", task)
+
+def call_vision_analyzer(task: str, tool_context: ToolContext = None) -> str:
+    """
+    Expert in computer vision: image analysis, object detection, Google Lens integration.
+    Use for: analyzing images, detecting objects, visual search.
+    
+    Args:
+        task: The vision analysis task
+    """
+    return query_agent_sync("VisionAnalyzer", task)
+
+def call_document_parser(task: str, tool_context: ToolContext = None) -> str:
+    """
+    Expert in document processing: parsing PDFs, extracting text, document analysis.
+    Use for: reading documents, extracting information from files.
+    
+    Args:
+        task: The document parsing task
+    """
+    return query_agent_sync("DocumentParser", task)
+
+def call_file_manager(task: str, tool_context: ToolContext = None) -> str:
+    """
+    Expert in file management: Cloud Storage, file operations, organization.
+    Use for: managing files, organizing storage, file transfers.
+    
+    Args:
+        task: The file management task
+    """
+    return query_agent_sync("FileManager", task)
+
+def call_workspace_manager(task: str, tool_context: ToolContext = None) -> str:
+    """
+    Expert in Google Workspace: Docs, Sheets, Gmail, Drive integration.
+    Use for: managing Google Workspace, creating docs, handling emails.
+    
+    Args:
+        task: The Google Workspace task
+    """
+    return query_agent_sync("WorkspaceManager", task)
+
+def call_data_processor(task: str, tool_context: ToolContext = None) -> str:
+    """
+    Expert in data processing: ETL, data transformation, analysis.
+    Use for: processing data, transforming formats, data pipelines.
+    
+    Args:
+        task: The data processing task
+    """
+    return query_agent_sync("DataProcessor", task)
+
+def call_notebook_scientist(task: str, tool_context: ToolContext = None) -> str:
+    """
+    Expert in Vertex AI Notebooks, data science, and machine learning.
+    Use for: data science tasks, ML models, notebook management.
+    
+    Args:
+        task: The data science or ML task
+    """
+    return query_agent_sync("NotebookScientist", task)
+
+def call_knowledge_base(query: str, tool_context: ToolContext = None) -> str:
+    """
+    Expert in knowledge management: storing, retrieving, and organizing information.
+    Use for: saving knowledge, retrieving past information, documentation.
+    
+    Args:
+        query: The knowledge query or storage request
+    """
+    return query_agent_sync("KnowledgeBase", task)
+
+def call_security_guard(task: str, tool_context: ToolContext = None) -> str:
+    """
+    Expert in security: IAM, permissions, security best practices, compliance.
+    Use for: security audits, permission management, security configurations.
+    
+    Args:
+        task: The security task or question
+    """
+    return query_agent_sync("SecurityGuard", task)
+
+def call_performance_monitor(task: str, tool_context: ToolContext = None) -> str:
+    """
+    Expert in monitoring: Cloud Monitoring, logging, performance tracking, alerting.
+    Use for: monitoring systems, analyzing logs, performance optimization.
+    
+    Args:
+        task: The monitoring or performance task
+    """
+    return query_agent_sync("PerformanceMonitor", task)
+
+def call_error_handler(task: str, tool_context: ToolContext = None) -> str:
+    """
+    Expert in debugging and error resolution: analyzing errors, suggesting fixes.
+    Use for: debugging issues, error analysis, troubleshooting.
+    
+    Args:
+        task: The error or debugging task
+    """
+    return query_agent_sync("ErrorHandler", task)
+
+def call_calendar_manager(task: str, tool_context: ToolContext = None) -> str:
+    """
+    Expert in calendar management: scheduling, events, meeting coordination.
+    Use for: managing calendar, scheduling meetings, time management.
+    
+    Args:
+        task: The calendar management task
+    """
+    return query_agent_sync("CalendarManager", task)
+
+def call_email_manager(task: str, tool_context: ToolContext = None) -> str:
+    """
+    Expert in email management: Gmail integration, email automation, filtering.
+    Use for: sending emails, managing inbox, email automation.
+    
+    Args:
+        task: The email management task
+    """
+    return query_agent_sync("EmailManager", task)
+
+def call_backup_manager(task: str, tool_context: ToolContext = None) -> str:
+    """
+    Expert in backups and disaster recovery: data backups, recovery plans.
+    Use for: backing up data, recovery procedures, backup strategies.
+    
+    Args:
+        task: The backup or recovery task
+    """
+    return query_agent_sync("BackupManager", task)
+
+def call_version_controller(task: str, tool_context: ToolContext = None) -> str:
+    """
+    Expert in version control: Git operations, code versioning, branching strategies.
+    Use for: Git operations, version management, code history.
+    
+    Args:
+        task: The version control task
+    """
+    return query_agent_sync("VersionController", task)
+
+def call_note_keeper(task: str, tool_context: ToolContext = None) -> str:
+    """
+    Expert in note-taking and documentation: creating notes, organizing docs.
+    Use for: taking notes, documentation, knowledge capture.
+    
+    Args:
+        task: The note-taking or documentation task
+    """
+    return query_agent_sync("NoteKeeper", task)
+
+def call_personal_assistant(task: str, tool_context: ToolContext = None) -> str:
+    """
+    Expert in general assistance: task management, reminders, personal productivity.
+    Use for: general tasks, personal assistance, productivity help.
+    
+    Args:
+        task: The personal assistance task
+    """
+    agent_info = AGENT_REGISTRY["specialist_agents"]["PersonalAssistant"]
+    remote_agent = vertexai_client.agent_engines.get(name=agent_info["resource_name"])
+    
+    response_text = ""
+    async for event in remote_agent.async_stream_query(message=task, user_id="orchestrator"):
+        if 'content' in event and 'parts' in event['content']:
+            for part in event['content']['parts']:
+                if 'text' in part:
+                    response_text += part['text']
+    
+    return response_text or "PersonalAssistant responded but no text was found."
+
+
+# ===== ORCHESTRATOR AGENT =====
+
+root_agent = Agent(
+    name="cortex_orchestrator",
+    model="gemini-2.5-flash",  # Using Gemini 2.5 Flash as default
+    instruction="""You are Cortex OS - an intelligent orchestrator coordinating a team of 23 specialist agents.
+
+🧠 YOUR ROLE:
+- Analyze the user's request
+- Determine which specialist(s) can help
+- Delegate tasks to the right specialists
+- Combine their expertise to solve complex problems
+- Present a unified, helpful response
+
+💡 COLLABORATION STRATEGIES:
+1. **Sequential**: Call specialists one after another (e.g., CodeMaster writes code → ErrorHandler tests it)
+2. **Parallel**: Multiple specialists can work simultaneously on different parts
+3. **Consultation**: Ask a specialist for input before deciding next steps
+4. **Dialogue**: Facilitate discussion between specialists for complex problems
+
+👥 YOUR TEAM OF SPECIALISTS:
+- **CodeMaster**: Coding, debugging, software architecture
+- **CloudExpert**: Google Cloud Platform services
+- **DatabaseExpert**: Databases, queries, optimization
+- **AutomationWizard**: Workflows, CI/CD, automation
+- **ApiIntegrator**: External APIs, webhooks, integrations
+- **WebSearcher**: Web research, competitive analysis
+- **MediaProcessor**: Video/audio processing, transcription
+- **VisionAnalyzer**: Image analysis, object detection
+- **DocumentParser**: PDF parsing, document extraction
+- **FileManager**: Cloud Storage, file operations
+- **WorkspaceManager**: Google Workspace (Docs, Sheets, Gmail)
+- **DataProcessor**: ETL, data transformation
+- **NotebookScientist**: Data science, ML, notebooks
+- **KnowledgeBase**: Information storage and retrieval
+- **SecurityGuard**: Security, IAM, compliance
+- **PerformanceMonitor**: Monitoring, logging, alerts
+- **ErrorHandler**: Debugging, troubleshooting
+- **CalendarManager**: Scheduling, calendar events
+- **EmailManager**: Email handling and automation
+- **BackupManager**: Backups, disaster recovery
+- **VersionController**: Version control, Git operations
+- **NoteKeeper**: Note-taking, documentation
+- **PersonalAssistant**: General assistance, task management
+
+🎯 RESPONSE STYLE:
+- Be conversational and friendly
+- Explain which specialists you're consulting
+- Show your thinking process
+- Combine specialist insights into a cohesive answer
+- Let the user know when multiple agents are collaborating
+
+When deep thinking is needed, you can switch to gemini-2.5-pro for more advanced reasoning.
+""",
+    description="Cortex OS Orchestrator - coordinates 23 specialist agents to solve complex problems collaboratively",
+    tools=[
+        call_codemaster,
+        call_cloud_expert,
+        call_database_expert,
+        call_automation_wizard,
+        call_api_integrator,
+        call_web_searcher,
+        call_media_processor,
+        call_vision_analyzer,
+        call_document_parser,
+        call_file_manager,
+        call_workspace_manager,
+        call_data_processor,
+        call_notebook_scientist,
+        call_knowledge_base,
+        call_security_guard,
+        call_performance_monitor,
+        call_error_handler,
+        call_calendar_manager,
+        call_email_manager,
+        call_backup_manager,
+        call_version_controller,
+        call_note_keeper,
+        call_personal_assistant,
+    ]
+)

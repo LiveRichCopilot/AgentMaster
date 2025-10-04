@@ -1,0 +1,24 @@
+{
+  "displayName": "Cortex OS Multi-Agent System",
+  "defaultLanguageCode": "en",
+  "timeZone": "America/Los_Angeles",
+  "description": "24 AI specialist agents with 44 tools for comprehensive task automation",
+  "agentUri": "https://cortex-os-1096519851619.us-central1.run.app",
+  "enableStackdriverLogging": true,
+  "startFlow": "Default Start Flow",
+  "securitySettings": {
+    "retentionWindowDays": 365
+  },
+  "advancedSettings": {
+    "loggingSettings": {
+      "enableStackdriverLogging": true,
+      "enableInteractionLogging": true
+    }
+  },
+  "textToSpeechSettings": {
+    "enableTextToSpeech": true
+  },
+  "speechToTextSettings": {
+    "enableSpeechAdaptation": true
+  }
+}
