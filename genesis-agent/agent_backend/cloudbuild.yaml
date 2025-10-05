@@ -1,0 +1,23 @@
+
+steps:
+  # Step 1: Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/studio-2416451423-f2d96/switch-site:latest', '.']
+
+  # Step 2: Push the container image to Google Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/studio-2416451423-f2d96/switch-site:latest']
+
+  # Step 3: Deploy the container to Cloud Run
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'switch-site'
+      - '--image=gcr.io/studio-2416451423-f2d96/switch-site:latest'
+      - '--region=us-central1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+
+images:
+- 'gcr.io/studio-2416451423-f2d96/switch-site:latest'

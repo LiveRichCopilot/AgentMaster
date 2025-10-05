@@ -14,29 +14,14 @@ GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 if not GOOGLE_API_KEY:
     raise ValueError("GOOGLE_API_KEY environment variable not set.")
 
-MODEL_NAME = "gemini-1.5-flash-preview-0514"
+# Corrected model name as per user specification
+MODEL_NAME = "gemini-live-2.5-flash-preview-native-audio"
 
 class MultimodalStreamingServer:
     def __init__(self):
         self.app = web.Application()
         self.app.router.add_get('/ws', self.handle_websocket)
-
-        # --- STATIC FILE SERVING CONFIGURATION ---
-        # The path to the static frontend build files.
-        # Assumes the frontend is built into a 'build' directory.
-        static_files_path = os.path.join(os.path.dirname(__file__), 'build')
-
-        # Serve the index.html for the root path and any other sub-paths
-        self.app.router.add_get('/', self.serve_index)
-        self.app.router.add_get('/{tail:.*}', self.serve_index) # Handles client-side routing
-
-        # Serve static assets like JS, CSS, images
-        self.app.router.add_static('/static', os.path.join(static_files_path, 'static'))
-
-    async def serve_index(self, request):
-        """Serves the index.html file for any non-API route."""
-        index_path = os.path.join(os.path.dirname(__file__), 'build', 'index.html')
-        return web.FileResponse(index_path)
+        # Removed all static file and index.html serving logic that caused the crash
 
     async def handle_websocket(self, request):
         ws = web.WebSocketResponse()
@@ -98,11 +83,8 @@ class MultimodalStreamingServer:
                     if "realtimeInput" in data and "mediaChunks" in data["realtimeInput"]:
                         streaming_msg = {"realtime_input": data["realtimeInput"]}
                         await gemini_ws.send_str(json.dumps(streaming_msg))
-                        media_types = [chunk.get("mimeType", "unknown") for chunk in data["realtimeInput"]["mediaChunks"]]
-                        logger.info(f" relayed media chunks to Gemini: {media_types}")
                     elif "clientContent" in data:
                         await gemini_ws.send_str(json.dumps(data))
-                        logger.info(f"💬 Relayed text message to Gemini")
                 elif msg.type == web.WSMsgType.ERROR:
                     logger.error(f"Client streaming error: {client_ws.exception()}")
                     break

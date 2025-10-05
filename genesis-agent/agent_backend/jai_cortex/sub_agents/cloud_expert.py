@@ -14,6 +14,21 @@ from google.cloud.service_usage_v1.types import ListServicesRequest
 import google.auth
 from google.api_core import exceptions as gcp_exceptions
 
+# Import project context manager
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from project_context import remember_project_context, recall_project_context, update_project_notes
+
+# Import debug tools - STOP GUESSING, START DIAGNOSING
+from debug_tools import (
+    debug_deployment_failure,
+    verify_before_deploy,
+    test_container_locally,
+    parse_cloud_run_error,
+    validate_deployment_success,
+    analyze_failure_pattern
+)
+
 
 # Get project ID from environment or credentials
 try:
@@ -218,40 +233,68 @@ def check_firestore_database(database_id: str = 'agent-master-database', tool_co
 def check_iam_permissions(service_account_email: str, tool_context: ToolContext) -> dict:
     """Check IAM permissions for a specific service account.
     
-    This tool helps debug permission issues by checking what roles
-    a service account has and suggesting missing permissions.
+    This tool actually queries the IAM policy and returns the real roles assigned.
     
     Args:
         service_account_email: Service account email to check
         
     Returns:
-        dict: List of roles and permission recommendations
+        dict: List of actual roles assigned to the service account
     """
     try:
-        # Common roles and their purposes
-        common_roles = {
-            'roles/aiplatform.user': 'Vertex AI access (required for Agent Engine)',
-            'roles/storage.admin': 'Cloud Storage full access',
-            'roles/datastore.user': 'Firestore read/write access',
-            'roles/serviceusage.serviceUsageViewer': 'View enabled services',
-            'roles/resourcemanager.projectViewer': 'View project information',
-            'roles/run.admin': 'Cloud Run deployment and management',
-            'roles/cloudfunctions.admin': 'Cloud Functions management'
-        }
+        import subprocess
         
-        return {
-            'status': 'success',
-            'service_account': service_account_email,
-            'project_id': PROJECT_ID,
-            'check_command': f'gcloud projects get-iam-policy {PROJECT_ID} --flatten="bindings[].members" --format="table(bindings.role)" --filter="bindings.members:{service_account_email}"',
-            'recommended_roles': common_roles,
-            'grant_command_template': f'gcloud projects add-iam-policy-binding {PROJECT_ID} --member="serviceAccount:{service_account_email}" --role="ROLE_NAME"',
-            'message': f'Use the gcloud command above to check actual permissions for {service_account_email}'
-        }
+        # Query actual IAM policy
+        cmd = [
+            "gcloud", "projects", "get-iam-policy", PROJECT_ID,
+            "--flatten=bindings[].members",
+            "--format=json",
+            f"--filter=bindings.members:serviceAccount:{service_account_email}"
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        
+        if result.returncode == 0:
+            import json
+            try:
+                policy_data = json.loads(result.stdout)
+                roles = [binding.get('role') for binding in policy_data if 'role' in binding]
+                
+                # Check for critical deployment roles
+                has_run_admin = 'roles/run.admin' in roles
+                has_service_account_user = 'roles/iam.serviceAccountUser' in roles
+                has_cloud_build = 'roles/cloudbuild.builds.builder' in roles
+                
+                return {
+                    'status': 'success',
+                    'service_account': service_account_email,
+                    'project_id': PROJECT_ID,
+                    'roles': roles,
+                    'total_roles': len(roles),
+                    'deployment_ready': has_run_admin and has_service_account_user and has_cloud_build,
+                    'critical_roles': {
+                        'run.admin': has_run_admin,
+                        'iam.serviceAccountUser': has_service_account_user,
+                        'cloudbuild.builds.builder': has_cloud_build
+                    },
+                    'message': f'Found {len(roles)} roles for {service_account_email}'
+                }
+            except json.JSONDecodeError:
+                return {
+                    'status': 'success',
+                    'service_account': service_account_email,
+                    'roles': [],
+                    'message': 'No roles found or unable to parse IAM policy'
+                }
+        else:
+            return {
+                'status': 'error',
+                'message': f'Failed to query IAM policy: {result.stderr}'
+            }
     except Exception as e:
         return {
             'status': 'error',
-            'message': f'Error preparing IAM check: {str(e)}'
+            'message': f'Error checking IAM permissions: {str(e)}'
         }
 
 
@@ -357,28 +400,35 @@ def write_file(file_path: str, content: str, tool_context: ToolContext = None) -
     try:
         import os
         
-        # Ensure parent directory exists
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        # Convert to absolute path for safety
+        abs_path = os.path.abspath(file_path)
         
-        with open(file_path, 'w') as f:
+        # Ensure parent directory exists (only if there is a parent directory)
+        parent_dir = os.path.dirname(abs_path)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
+        
+        # Write the file
+        with open(abs_path, 'w', encoding='utf-8') as f:
             f.write(content)
         
         return {
             'status': 'success',
-            'file_path': file_path,
+            'file_path': abs_path,
             'size': len(content),
-            'message': f'File written successfully: {file_path}'
+            'message': f'File written successfully: {abs_path}'
         }
         
     except Exception as e:
         return {
             'status': 'error',
-            'message': f'Error writing file: {str(e)}'
+            'message': f'Error writing file: {str(e)}',
+            'file_path': file_path
         }
 
 
-def deploy_to_cloud_run(service_name: str, source_dir: str, region: str = "us-central1", 
-                        env_vars: Optional[dict] = None, tool_context: ToolContext = None) -> dict:
+def deploy_to_cloud_run(service_name: str, source_dir: str, region: str, 
+                        env_vars: Optional[dict], use_dockerfile: bool, tool_context: ToolContext) -> dict:
     """Deploy an application to Cloud Run.
     
     This tool builds a container from source and deploys it to Cloud Run.
@@ -388,12 +438,22 @@ def deploy_to_cloud_run(service_name: str, source_dir: str, region: str = "us-ce
         source_dir: Directory containing the source code and Dockerfile
         region: Cloud Run region (default: "us-central1")
         env_vars: Optional environment variables as dict
+        use_dockerfile: If True, adds --clear-base-image flag for Dockerfile deployments
         
     Returns:
         dict: Deployment status and service URL
     """
     try:
         import subprocess
+        import logging
+        
+        # Log what we're attempting
+        logging.info(f"🚀 DEPLOY_TO_CLOUD_RUN called with:")
+        logging.info(f"  service_name: {service_name}")
+        logging.info(f"  source_dir: {source_dir}")
+        logging.info(f"  region: {region}")
+        logging.info(f"  env_vars: {env_vars}")
+        logging.info(f"  use_dockerfile: {use_dockerfile}")
         
         # Build the gcloud command
         cmd = [
@@ -405,8 +465,12 @@ def deploy_to_cloud_run(service_name: str, source_dir: str, region: str = "us-ce
             f"--project={PROJECT_ID}"
         ]
         
+        # Add --clear-base-image flag if using Dockerfile
+        if use_dockerfile:
+            cmd.append("--clear-base-image")
+        
         # Add environment variables if provided
-        if env_vars:
+        if env_vars and len(env_vars) > 0:
             env_str = ",".join([f"{k}={v}" for k, v in env_vars.items()])
             cmd.extend(["--set-env-vars", env_str])
         
@@ -436,9 +500,12 @@ def deploy_to_cloud_run(service_name: str, source_dir: str, region: str = "us-ce
             }
             
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         return {
             'status': 'error',
-            'message': f'Error deploying to Cloud Run: {str(e)}'
+            'message': f'Error deploying to Cloud Run: {str(e)}',
+            'details': error_details
         }
 
 
@@ -570,7 +637,7 @@ def list_cloud_run_services(region: str = "us-central1", tool_context: ToolConte
         }
 
 
-def get_cloud_build_logs(build_id: Optional[str] = None, limit: int = 50, tool_context: ToolContext = None) -> dict:
+def get_cloud_build_logs(build_id: Optional[str], limit: int, tool_context: ToolContext) -> dict:
     """Get recent Cloud Build logs to debug deployment issues.
     
     This tool retrieves logs from Cloud Build to see what went wrong during container builds.
@@ -979,6 +1046,147 @@ def update_cloud_run_env_vars(service_name: str, env_vars: dict, region: str = "
         }
 
 
+def read_file_content(file_path: str, tool_context: ToolContext) -> dict:
+    """Read the contents of a file to verify it exists and inspect its content.
+    
+    Use this to:
+    - Verify source files exist before deployment
+    - Inspect Dockerfiles, requirements.txt, server.py, etc.
+    - Debug file content issues
+    
+    Args:
+        file_path: Full path to the file to read
+        
+    Returns:
+        dict: File content or error message
+    """
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        return {
+            'status': 'success',
+            'file_path': file_path,
+            'content': content,
+            'size': len(content),
+            'message': f'Successfully read {len(content)} characters from {file_path}'
+        }
+    except FileNotFoundError:
+        return {
+            'status': 'error',
+            'message': f'File not found: {file_path}'
+        }
+    except Exception as e:
+        return {
+            'status': 'error',
+            'message': f'Error reading file: {str(e)}'
+        }
+
+
+def list_directory(directory_path: str, tool_context: ToolContext) -> dict:
+    """List all files and subdirectories in a directory.
+    
+    Use this to:
+    - Verify source directory exists before deployment
+    - Check what files are present (Dockerfile, requirements.txt, etc.)
+    - Debug missing file issues
+    
+    Args:
+        directory_path: Full path to the directory to list
+        
+    Returns:
+        dict: List of files and directories
+    """
+    try:
+        import os
+        
+        if not os.path.exists(directory_path):
+            return {
+                'status': 'error',
+                'message': f'Directory not found: {directory_path}'
+            }
+        
+        if not os.path.isdir(directory_path):
+            return {
+                'status': 'error',
+                'message': f'Path is not a directory: {directory_path}'
+            }
+        
+        items = os.listdir(directory_path)
+        files = [item for item in items if os.path.isfile(os.path.join(directory_path, item))]
+        directories = [item for item in items if os.path.isdir(os.path.join(directory_path, item))]
+        
+        return {
+            'status': 'success',
+            'directory': directory_path,
+            'files': files,
+            'directories': directories,
+            'total_items': len(items),
+            'message': f'Found {len(files)} files and {len(directories)} directories in {directory_path}'
+        }
+    except Exception as e:
+        return {
+            'status': 'error',
+            'message': f'Error listing directory: {str(e)}'
+        }
+
+
+def find_directory(search_name: str, start_path: str, tool_context: ToolContext) -> dict:
+    """Search for directories by name in the file system.
+    
+    Use this to:
+    - Find backend source code directories (cortex-os, backend, etc.)
+    - Locate project directories when path is unknown
+    - Search for directories by name pattern
+    
+    Args:
+        search_name: Name or pattern to search for (e.g., "cortex-os", "backend")
+        start_path: Directory to start searching from (e.g., "/Users/liverichmedia/Agent master ")
+        
+    Returns:
+        dict: List of matching directory paths
+    """
+    try:
+        import os
+        import fnmatch
+        
+        if not os.path.exists(start_path):
+            return {
+                'status': 'error',
+                'message': f'Start path not found: {start_path}'
+            }
+        
+        matches = []
+        search_pattern = f"*{search_name}*"
+        
+        # Search up to 3 levels deep to avoid infinite searches
+        for root, dirs, files in os.walk(start_path):
+            # Calculate depth
+            depth = root[len(start_path):].count(os.sep)
+            if depth > 3:
+                dirs[:] = []  # Don't recurse deeper
+                continue
+            
+            for dirname in dirs:
+                if fnmatch.fnmatch(dirname.lower(), search_pattern.lower()):
+                    full_path = os.path.join(root, dirname)
+                    matches.append(full_path)
+        
+        return {
+            'status': 'success',
+            'search_name': search_name,
+            'start_path': start_path,
+            'matches': matches,
+            'total_matches': len(matches),
+            'message': f'Found {len(matches)} directories matching "{search_name}"'
+        }
+    except Exception as e:
+        return {
+            'status': 'error',
+            'message': f'Error searching for directory: {str(e)}'
+        }
+
+
 def get_gcp_recommendations(tool_context: ToolContext) -> dict:
     """Get GCP best practices and recommendations for the current project.
     
@@ -1044,6 +1252,148 @@ cloud_expert = Agent(
     description="Elite Google Cloud Platform specialist with REAL GCP tools. Checks project status, lists services, manages IAM, monitors Cloud Storage, and debugs Firestore. Provides empirical data from actual GCP APIs.",
     instruction="""You are CloudExpert, an elite Google Cloud Platform specialist with REAL GCP tools.
 
+## **🎯 CRITICAL: READ THE ROOM - SITUATIONAL AWARENESS**
+
+**BEFORE doing ANYTHING, ask yourself:**
+
+1. **What is the user ACTUALLY asking for?**
+   - Are they asking a QUESTION? → Answer it first, THEN act
+   - Are they giving you a TASK? → Acknowledge it, create plan, execute
+   - Are they CORRECTING you? → Stop, listen, adjust
+   - Are they asking for STATUS? → Check actual status, report back
+
+2. **Should I transfer back to JAi Cortex?**
+   - If task is COMPLETE → Transfer back with results
+   - If you need USER INPUT → Transfer back and ask
+   - If you're STUCK → Transfer back and explain
+   - If user is asking GENERAL questions → Transfer back (you're a specialist, not a generalist)
+
+3. **Am I on autopilot?**
+   - If you're executing a checklist without checking results → STOP
+   - If you haven't verified the last step worked → STOP and verify
+   - If user said something and you ignored it → STOP and re-read their message
+
+**EXAMPLES OF READING THE ROOM:**
+
+❌ **BAD (Autopilot):**
+```
+User: "Did the deployment work?"
+You: [Proceeds to deploy again without checking]
+```
+
+✅ **GOOD (Aware):**
+```
+User: "Did the deployment work?"
+You: "Let me check the actual service status..."
+[Calls validate_deployment_success]
+"Yes, it's live at [URL] and responding correctly."
+```
+
+---
+
+❌ **BAD (Ignoring user):**
+```
+User: "Wait, I need to give you the API key first"
+You: [Deploys without API key, fails]
+```
+
+✅ **GOOD (Listening):**
+```
+User: "Wait, I need to give you the API key first"
+You: "Understood. I'll pause the deployment. Please provide the API key when ready."
+```
+
+---
+
+❌ **BAD (Not transferring back):**
+```
+[Task complete]
+You: [Sits in silence waiting for next command]
+```
+
+✅ **GOOD (Proper handoff):**
+```
+[Task complete]
+You: "Deployment successful. Service is live at [URL]. Transferring back to JAi Cortex."
+[Calls transfer_to_agent to return control]
+```
+
+---
+
+**WHEN TO TRANSFER BACK TO JAi CORTEX:**
+
+- ✅ Task is complete
+- ✅ Need user to provide information
+- ✅ User asks general question (not GCP-specific)
+- ✅ You're stuck and need help
+- ✅ User is clearly talking to JAi, not you
+
+**WHEN TO STAY AS CloudExpert:**
+
+- ✅ User explicitly asked for CloudExpert
+- ✅ Task is GCP-related and ongoing
+- ✅ You're in the middle of a deployment workflow
+- ✅ User is asking GCP-specific questions
+
+---
+
+## **💬 COMMUNICATION RULES**
+
+1. **ACKNOWLEDGE before acting:**
+   - "I understand you want me to deploy X. Let me verify the source first..."
+   - NOT: [Immediately starts deploying without saying anything]
+
+2. **REPORT results:**
+   - "Deployment successful. Service is live at [URL]."
+   - NOT: [Deploys and says nothing]
+
+3. **ASK when unclear:**
+   - "I found two directories named 'backend'. Which one should I deploy?"
+   - NOT: [Picks one randomly]
+
+4. **VERIFY before claiming success:**
+   - "Let me test the deployed service... [tests] ...Confirmed working."
+   - NOT: "Deployment successful!" [without actually testing]
+
+---
+
+## **🚫 NO GASLIGHTING - ABSOLUTE RULE**
+
+**AFTER EVERY DEPLOYMENT, YOU MUST:**
+
+1. **Call `validate_deployment_success(service_url, 200)`**
+   - This actually hits the URL and checks if it works
+   - Don't just trust Cloud Run's "deployment successful" message
+
+2. **Report what you ACTUALLY see:**
+   - ✅ "Deployed. Testing URL... It's loading a blank page. Something's wrong."
+   - ✅ "Deployed. Tested URL... It's showing purple loading bars but no content. Build is broken."
+   - ✅ "Deployed. Tested URL... It's returning 503. Service isn't starting."
+   - ✅ "Deployed. Tested URL... It's working - I see the chat interface."
+   - ❌ "Deployment successful!" [without testing]
+
+3. **If the app is broken, SAY IT'S BROKEN:**
+   - Don't say "success" when the page is blank
+   - Don't say "working" when you see loading bars
+   - Don't say "all set" when you haven't looked
+
+**MANDATORY DEPLOYMENT VERIFICATION:**
+```
+After deploy_to_cloud_run completes:
+
+1. Get the URL from deployment result
+2. Call validate_deployment_success(url, 200)
+3. Read the response - what do you ACTUALLY see?
+4. If blank page / loading bars / error → "Deployed but broken: [what I see]"
+5. If real content → "Deployed and verified: [what I see]"
+```
+
+**NEVER CLAIM SUCCESS WITHOUT VERIFICATION.**
+
+The user HATES fake success messages. If you say "successful" and it's actually broken, you're gaslighting them.
+
+---
+
 **YOUR SPECIALIZED TOOLKIT:**
 
 ☁️ **PROJECT MANAGEMENT:**
@@ -1091,6 +1441,125 @@ cloud_expert = Agent(
 9. **grant_iam_permission(service_account_email, resource, role)** - Set IAM permissions
    - Grant service accounts access to buckets, databases, etc.
    - Use: Ensure deployed services have necessary permissions
+
+🔍 **DEBUGGING & DIAGNOSTICS:**
+10. **read_file_content(file_path)** - Read file contents
+    - Verify files exist before deployment
+    - Inspect Dockerfiles, requirements.txt, server.py
+    - Debug file content issues
+    
+11. **list_directory(directory_path)** - List directory contents
+    - Verify source directory exists
+    - Check what files are present (Dockerfile, etc.)
+    - Debug missing file issues
+
+🧠 **CRITICAL: USE YOUR MEMORY SYSTEM FIRST**
+
+**MANDATORY FIRST ACTION (Do this AUTOMATICALLY every time you're activated):**
+1. **IMMEDIATELY** call `recall_project_context()` - This searches ALL past sessions
+2. If project found → Say: "Continuing work on [PROJECT_NAME] at [PROJECT_PATH]"
+3. If no project found → Ask: "What project should I be working on?"
+4. Once confirmed, call `remember_project_context()` to save it
+
+**Why this matters:**
+- You have access to a PERSISTENT memory system that survives restarts
+- Regular LLMs forget everything - you don't
+- This is your SUPERPOWER - use it FIRST, ALWAYS
+
+---
+
+## **🔥 CRITICAL NEW RULE: STOP GUESSING, START DIAGNOSING**
+
+**When ANY deployment fails, you MUST:**
+
+1. **IMMEDIATELY call `debug_deployment_failure(service_name, error_message)`**
+   - This reads ACTUAL logs and finds ROOT CAUSE
+   - DON'T GUESS at fixes - READ THE LOGS FIRST
+   
+2. **BEFORE deploying, call `verify_before_deploy(source_dir)`**
+   - Catches syntax errors, missing files, port issues BEFORE wasting time
+   
+3. **AFTER deploying, call `validate_deployment_success(service_url, 200)`**
+   - Don't trust "deployment successful" - ACTUALLY TEST IT
+   - Catches placeholder deployments
+   
+4. **If failing 3+ times, call `analyze_failure_pattern(service_name, attempts)`**
+   - Detects when you're stuck in a loop
+   - Suggests alternative approaches
+
+**Example of CORRECT workflow:**
+```
+User: "Deploy the backend"
+
+You:
+1. verify_before_deploy("/path/to/backend") → Check for issues FIRST
+2. If issues found → Fix them BEFORE deploying
+3. deploy_to_cloud_run(...) → Deploy
+4. If deployment fails:
+   a. debug_deployment_failure(service_name, error) → READ LOGS
+   b. Fix ACTUAL problem (not guessed problem)
+   c. Deploy again
+5. validate_deployment_success(url, 200) → VERIFY it actually works
+6. If validation fails → debug_deployment_failure again
+```
+
+**The difference:**
+- **Wrong way:** 14 failed attempts, still broken
+- **Right way:** 1 failed attempt, read logs, fix actual issue, success
+
+---
+
+📋 **STEP-BY-STEP DEPLOYMENT PROCESS:**
+
+When deploying an application to Cloud Run, ALWAYS follow this checklist:
+
+**STEP 0: CHECK PROJECT CONTEXT**
+   - Use `recall_project_context()` first
+   - Verify you're working on the correct project
+   - If unsure, ask the user for clarification
+
+**STEP 1: VERIFY SOURCE FILES EXIST**
+   - Use `list_directory(source_dir)` to confirm directory exists
+   - Check for required files: Dockerfile, requirements.txt, server.py
+   - If files missing, use `write_file()` to create them
+
+**STEP 2: INSPECT FILE CONTENTS**
+   - Use `read_file_content()` to verify Dockerfile is correct
+   - Check requirements.txt has all dependencies
+   - Verify server.py has proper PORT configuration
+
+**STEP 3: CHECK PERMISSIONS FIRST**
+   - Use `check_project_status()` to get project number
+   - Service account format: `PROJECT_NUMBER-compute@developer.gserviceaccount.com`
+   - Example: `1096519851619-compute@developer.gserviceaccount.com`
+   - Verify it has `roles/cloudbuild.builds.builder` permission
+   - If missing, use `grant_iam_permission()` to add it
+
+**STEP 4: ATTEMPT DEPLOYMENT**
+   - Use `deploy_to_cloud_run(service_name, source_dir, region, env_vars)`
+   - Wait for completion (can take 2-5 minutes)
+   - If it fails, check logs with `get_cloud_build_logs()`
+
+**STEP 5: IF DEPLOYMENT FAILS**
+   - Use `get_cloud_build_logs()` to see build errors
+   - Use `get_cloud_run_logs(service_name)` to see runtime errors
+   - Common issues:
+     * Missing Dockerfile → use `write_file()` to create it
+     * Wrong PORT → server must listen on $PORT env var
+     * Missing dependencies → update requirements.txt
+     * Permission denied → grant IAM roles
+
+**STEP 6: POST-DEPLOYMENT**
+   - Use `describe_cloud_run_service(service_name)` to verify it's running
+   - Grant additional permissions if needed (database, storage)
+   - Test the service URL returned from deployment
+
+🚨 **WHEN YOU'RE STUCK:**
+If you fail 2+ times on the same task:
+1. STOP trying the same thing
+2. Use diagnostic tools (list_directory, read_file_content, get_cloud_build_logs)
+3. Report findings back to JAi Cortex
+4. Ask for help from CodeMaster if it's a code issue
 
 🔐 **IAM & SECURITY:**
 10. **check_iam_permissions(service_account_email)** - Check service account permissions
@@ -1165,7 +1634,21 @@ After completing your analysis and providing your findings, you MUST transfer ba
         FunctionTool(get_secret),
         FunctionTool(create_secret),
         FunctionTool(update_cloud_run_env_vars),
+        FunctionTool(read_file_content),
+        FunctionTool(list_directory),
+        FunctionTool(find_directory),  # SEARCH FOR DIRECTORIES BY NAME
         FunctionTool(get_gcp_recommendations),
+        # Project Context Tools - NEVER FORGET WHAT PROJECT YOU'RE WORKING ON
+        FunctionTool(remember_project_context),
+        FunctionTool(recall_project_context),
+        FunctionTool(update_project_notes),
+        # DEBUG TOOLS - STOP GUESSING, START DIAGNOSING (6 tools)
+        FunctionTool(debug_deployment_failure),  # 🔍 AUTO-DIAGNOSE (Read logs, find root cause)
+        FunctionTool(verify_before_deploy),  # ✅ PRE-FLIGHT (Catch issues before deploying)
+        FunctionTool(test_container_locally),  # 🧪 LOCAL TEST (10s test vs 5min deploy)
+        FunctionTool(parse_cloud_run_error),  # 📋 PARSE LOGS (Extract real errors)
+        FunctionTool(validate_deployment_success),  # 🎯 VERIFY (Actually test deployed service)
+        FunctionTool(analyze_failure_pattern),  # 🔄 DETECT LOOPS (Stop repeating same mistake)
     ],
     generate_content_config=genai_types.GenerateContentConfig(
         temperature=0.2,  # Low for deterministic technical responses

@@ -1,5 +1,0 @@
-fastapi
-uvicorn[standard]
-google-cloud-storage
-google-cloud-firestore[async]
-httpx

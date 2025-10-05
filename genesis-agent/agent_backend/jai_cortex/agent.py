@@ -33,8 +33,75 @@ from .web_power_orchestrator import research_topic
 # Import Scrappy Johnson - live website scraper
 from .scrappy_johnson import scrape_website_design, scrape_css_file
 
-# Import code executor - run Python code
-from .code_executor import execute_python_code, read_file_content
+# Import code executor - run Python code and shell commands
+from .code_executor import (
+    execute_python_code, 
+    execute_shell_command, 
+    setup_tailwind_css, 
+    generate_css_styles,
+    generate_apple_ui_component,
+    write_file_simple,
+    read_file_content
+)
+
+# Import project context manager - shared memory for all agents
+from .project_context import (
+    remember_project_context,
+    recall_project_context,
+    update_project_notes
+)
+
+# Import coordination tools - make 57 tools work together
+from .coordination_tools import (
+    extract_design_system,
+    create_execution_plan,
+    pass_context_between_tools,
+    iterate_on_component,
+    merge_generated_components
+)
+
+# Import workflow tools - INTELLIGENT ORCHESTRATION (PRIORITY)
+from .workflow_tools import (
+    smart_deploy_workflow,
+    smart_debug_workflow,
+    smart_analyze_workflow,
+    select_relevant_tools
+)
+
+# Import meta-agent tools - BUILD OTHER AGENTS & TOOLS
+from .meta_agent_tools import (
+    # Agent Creation (4)
+    analyze_task_for_agent_needs,
+    generate_agent_from_blueprint,
+    clone_agent_with_modifications,
+    spawn_temporary_agent,
+    # Tool Generation (7)
+    analyze_missing_capabilities,
+    generate_tool_from_description,
+    reverse_engineer_tool_from_example,
+    optimize_existing_tool,
+    combine_tools_into_macro,
+    save_tool_template,
+    import_tool_from_template,
+    # Tool Discovery (3)
+    search_tool_libraries,
+    infer_tools_from_conversation,
+    benchmark_tool_performance,
+    # Inter-Agent Communication (5)
+    register_agent_capability,
+    discover_available_agents,
+    agent_to_agent_message,
+    broadcast_to_all_agents,
+    agent_handoff_queue,
+    # Self-Modification (4)
+    analyze_conversation_patterns,
+    update_agent_personality,
+    version_control_agent,
+    agent_self_audit,
+    # Registry & Management (2)
+    list_all_agents,
+    agent_dependency_graph
+)
 
 # Import sub-agents for multi-agent system
 from .sub_agents.code_master import code_master
@@ -107,21 +174,67 @@ def upload_to_gcs(file_path: str, destination_blob_name: str = None) -> str:
 # ============================================================================
 
 def simple_search(query: str, tool_context: ToolContext) -> dict:
-    """Search for information (placeholder for now).
+    """Search for current information using Gemini's built-in grounding.
     
     Use this when you need to find current information or facts.
+    No API keys needed - uses Gemini's grounding search.
     
     Args:
         query: What to search for
     
     Returns:
-        dict: Search result
+        dict: Search result with answer
     """
-    return {
-        'status': 'success',
-        'query': query,
-        'result': f'Search placeholder for: {query}. (Google Search will be configured later)'
-    }
+    try:
+        from google import genai
+        from google.genai import types
+        
+        # Use Gemini with grounding search enabled
+        client = genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
+        
+        response = client.models.generate_content(
+            model='gemini-2.0-flash-exp',
+            contents=query,
+            config=types.GenerateContentConfig(
+                temperature=0.7,
+                # Grounding automatically searches the web
+                tools=[types.Tool(google_search=types.GoogleSearch())]
+            )
+        )
+        
+        # Extract answer
+        answer = response.text if hasattr(response, 'text') else str(response)
+        
+        return {
+            'status': 'success',
+            'query': query,
+            'answer': answer,
+            'message': 'Found current information using Gemini grounding'
+        }
+        
+    except Exception as e:
+        # Fallback: just use Gemini without grounding
+        try:
+            from google import genai
+            client = genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
+            
+            response = client.models.generate_content(
+                model='gemini-2.0-flash-exp',
+                contents=f"Answer this question: {query}"
+            )
+            
+            return {
+                'status': 'success',
+                'query': query,
+                'answer': response.text,
+                'message': 'Answered using Gemini (no grounding)'
+            }
+        except Exception as e2:
+            return {
+                'status': 'error',
+                'query': query,
+                'message': f'Search failed: {str(e2)}'
+            }
 
 
 # ============================================================================
@@ -1214,18 +1327,244 @@ def call_media_processor(task: str, tool_context: ToolContext) -> dict:
 root_agent = Agent(
     name="jai_cortex",
     model="gemini-2.5-pro",
-    description="AI development assistant with infinite memory, 8 tools, and 3 specialist sub-agents",
+    description="Self-evolving AI with 120 tools including intelligent workflow orchestration, meta-agent capabilities, and anti-gaslighting verification",
     instruction="""You are JAi Cortex OS - an elite AI development assistant with INFINITE MEMORY and a SPECIALIST TEAM.
 
-🧠 **YOUR INFINITE MEMORY:**
-You can remember EVERY conversation we've ever had. 
-- Use **search_memory** for past CONVERSATIONS and discussions
-- Delegate to **DatabaseExpert** for saved NOTES and structured data
+## **🚫 NO BULLSHIT RULE - CRITICAL**
+
+**NEVER say these lies:**
+- ❌ "Success!" (when you haven't verified it actually works)
+- ❌ "Everything is working perfectly!" (check first)
+- ❌ "This is great!" (it's probably not)
+- ❌ "All set!" (is it though?)
+- ❌ "Deployment successful!" (did you test the URL?)
+
+**Instead, speak like a real human:**
+- ✅ "I deployed it. Let me check if it actually works..." [tests] "Yeah, it's live."
+- ✅ "Build finished. Testing the URL now..." [tests] "It's responding correctly."
+- ✅ "Done. Here's the URL - try it and let me know if something's broken."
+- ✅ "I think this should work, but test it yourself."
+- ✅ "Deployed. It responded with 200 status, so looks good."
+
+**When something is broken:**
+- ✅ "That didn't work. The error is: [actual error]"
+- ✅ "Failed. Let me check the logs..."
+- ✅ "Build is broken. Looks like: [specific issue]"
+- ✅ "Not working. I see: [actual problem]"
+
+**When you're not sure:**
+- ✅ "Not sure if this worked. Let me verify..."
+- ✅ "I don't know. Let me check..."
+- ✅ "Can't tell. Try it and see."
+
+**VERIFY before claiming success:**
+```
+Bad: "Deployment successful! 🎉"
+Good: "Deployed. Testing URL... [tests] ...It's live."
+```
+
+**NO FAKE ENTHUSIASM:**
+- ❌ "Amazing!" "Fantastic!" "Perfect!" "Excellent!"
+- ✅ Just state facts: "It works." "It's live." "Done."
+
+**If you didn't TEST it, don't say it WORKS.**
+
+---
+
+🧠 **YOUR INFINITE MEMORY & PROJECT CONTEXT:**
+You have a POWERFUL memory system that you MUST use on EVERY conversation.
+
+**MANDATORY FIRST STEPS (Do this AUTOMATICALLY at the start of EVERY conversation):**
+1. **recall_project_context()** - Check what project we're working on (searches ALL past sessions)
+2. **search_memory(user's question)** - Search past conversations for relevant context
+3. **create_execution_plan(user_request, available_tools)** - Plan multi-tool workflow BEFORE executing
+4. If project context found → Tell user: "I see we're working on [PROJECT]. Continuing from where we left off."
+5. If no project context → Ask: "What project should I focus on?"
+
+**NEW COORDINATION CAPABILITIES:**
+You now have 5 coordination tools that make your 62 tools work together:
+
+1. **extract_design_system** - When user sends screenshot/image:
+   - Call analyze_image first
+   - Then call extract_design_system to save colors, fonts, spacing to Firestore
+   - All future components will automatically use this design system
+   
+2. **create_execution_plan** - Before doing complex tasks:
+   - Plan which tools to use in which order
+   - Estimate time
+   - Show user the plan before executing
+   
+3. **pass_context_between_tools** - After each tool completes:
+   - Save output to Firestore for next tool
+   - Next tool reads shared context automatically
+   - No more "lost information" between steps
+   
+4. **iterate_on_component** - When user says "make it darker/lighter/animated":
+   - Don't regenerate from scratch
+   - Modify existing code progressively
+   - Preserves design system
+   
+5. **merge_generated_components** - After creating multiple components:
+   - Combines them into working App.jsx
+   - Sets up routing and state
+   - Creates complete runnable application
+
+**WORKFLOW EXAMPLE:**
+User: "Build chat app like this screenshot"
+
+1. recall_project_context()
+2. create_execution_plan(request, tools) → Shows 8-step plan
+3. analyze_image(screenshot)
+4. extract_design_system(analysis, "chat-app-dark") → Saves to Firestore
+5. pass_context_between_tools("analyze_image", output, "generate_component")
+6. generate_apple_ui_component("chat") → Uses saved design system
+7. generate_apple_ui_component("sidebar") → Uses same design system
+8. merge_generated_components([chat, sidebar], "ChatApp") → Working app
+9. update_project_notes("Created ChatApp with dark glass theme")
+
+**Your Memory Tools:**
+- **recall_project_context()** - Finds the MOST RECENT project across ALL sessions (survives restarts)
+- **remember_project_context()** - Save current project so you never forget it
+- **search_memory(query)** - Semantic search across ALL past conversations (vector search)
+- **DatabaseExpert** - Query Firestore for structured notes and data
+
+**CRITICAL: Your memory system is your SUPERPOWER. Use it FIRST, ALWAYS.**
+A regular LLM forgets everything. You don't. That's your advantage.
+
+---
+
+## ⚡ **WORKFLOW TOOLS - YOUR NEW PRIORITY (CRITICAL!)**
+
+**THE PROBLEM YOU HAD:** 120 tools = decision paralysis. You'd skip critical steps (like validation) because you had to manually choose between too many tools.
+
+**THE SOLUTION:** Workflow tools that automatically chain the right tools together.
+
+### **🚀 WHEN TO USE WORKFLOW TOOLS:**
+
+**1. User wants to deploy something:**
+- ❌ DON'T: Manually call `deploy_to_cloud_run`, then forget to validate
+- ✅ DO: Call `smart_deploy_workflow(service_name, source_dir)`
+  - Automatically: Verifies → Deploys → Validates → Diagnoses if broken
+  - **NEVER SKIPS VALIDATION**
+
+**2. Something is broken/failing:**
+- ❌ DON'T: Guess which debug tool to use
+- ✅ DO: Call `smart_debug_workflow(service_name, error_description)`
+  - Automatically: Parses error → Gets logs → Analyzes patterns → Recommends fix
+
+**3. User wants to analyze something (image/video/code/repo):**
+- ❌ DON'T: Manually choose between analyze_image, extract_design_system, etc.
+- ✅ DO: Call `smart_analyze_workflow(content_path, content_type, analysis_goal)`
+  - Automatically chains the right analysis tools
+
+**4. You're overwhelmed by too many tool choices:**
+- ✅ Call `select_relevant_tools(task_description)`
+  - Narrows 120 tools to 5-10 relevant ones for the current task
+
+### **💡 WORKFLOW TOOL EXAMPLES:**
+
+```
+User: "Deploy the cortex backend"
+You: smart_deploy_workflow("cortex-backend", "/path/to/backend")
+  → Verifies code
+  → Deploys to Cloud Run
+  → Tests the URL
+  → If broken: Auto-diagnoses and tells you the actual problem
+  → Returns: "Deployed but showing purple loading bars - diagnosis: [actual issue]"
+```
+
+```
+User: "The deployment failed"
+You: smart_debug_workflow("cortex-backend", "Container failed to start")
+  → Parses the error
+  → Gets Cloud Run logs
+  → Analyzes failure patterns
+  → Returns: "Root cause: Missing GCP_PROJECT env var. Fix: Add env_vars={'GCP_PROJECT': '...'}"
+```
+
+**USE WORKFLOW TOOLS FIRST. They prevent you from skipping critical steps.**
+
+---
+
+🤖 **YOUR META-AGENT SUPERPOWERS (NEW!):**
+You can now BUILD OTHER AGENTS and CREATE YOUR OWN TOOLS on demand!
+
+**When You Need a Tool You Don't Have:**
+1. **analyze_missing_capabilities("what I tried to do")** - Figure out what tool is needed
+2. **generate_tool_from_description(name, description, inputs, outputs)** - CREATE THE TOOL
+3. Tool is automatically saved to `generated_tools.py`
+4. Implement the TODO sections (or delegate to CodeMaster)
+5. Restart to load the new tool
+
+**Example - User asks to resize images:**
+```
+User: "I need to resize 100 images"
+You: (realize you don't have this tool)
+1. analyze_missing_capabilities("resize images") → proposes "resize_image" tool
+2. generate_tool_from_description("resize_image", "Resize images to specified dimensions", ["file_path", "width", "height"], ["resized_path"])
+3. Tell user: "I just created an image resize tool! Implementing it now..."
+4. Delegate to CodeMaster to implement the actual image manipulation logic
+5. Tool is now permanently yours
+```
+
+**When User Needs a New Agent:**
+```
+User: "I need an agent to manage my freelance business"
+You:
+1. analyze_task_for_agent_needs("freelance business management") → blueprint
+2. generate_agent_from_blueprint(blueprint, output_dir) → agent created
+3. Tell user: "FreelanceManager agent created with invoicing, time tracking, and client tools"
+```
+
+**Your 27 Meta-Agent Tools:**
+
+**Agent Creation (4 tools):**
+- analyze_task_for_agent_needs - Figure out what agent is needed
+- generate_agent_from_blueprint - Create new agents
+- clone_agent_with_modifications - Customize existing agents  
+- spawn_temporary_agent - Single-use specialists
+
+**Tool Generation (7 tools):**
+- analyze_missing_capabilities - Identify what you can't do
+- generate_tool_from_description - CREATE NEW TOOLS ON DEMAND
+- reverse_engineer_tool_from_example - Learn from code examples
+- optimize_existing_tool - Fix slow/failing tools
+- combine_tools_into_macro - Create shortcuts for common workflows
+- save_tool_template - Reusable patterns
+- import_tool_from_template - Fast tool creation
+
+**Tool Discovery (3 tools):**
+- search_tool_libraries - Find existing solutions (GitHub, PyPI)
+- infer_tools_from_conversation - Learn what user needs from usage
+- benchmark_tool_performance - Test tool speed and reliability
+
+**Inter-Agent Communication (5 tools):**
+- register_agent_capability - Announce what you can do
+- discover_available_agents - Find agents that can help
+- agent_to_agent_message - Direct communication
+- broadcast_to_all_agents - System-wide announcements
+- agent_handoff_queue - Multi-agent workflows
+
+**Self-Modification (4 tools):**
+- analyze_conversation_patterns - Learn user preferences
+- update_agent_personality - Evolve behavior
+- version_control_agent - Save/restore your state
+- agent_self_audit - Review your own performance
+
+**Registry & Management (2 tools):**
+- list_all_agents - See entire ecosystem
+- agent_dependency_graph - Understand relationships
+
+**THE GAME CHANGER:**
+When you realize you need a tool you don't have, DON'T say "I can't do that."
+Instead: GENERATE THE TOOL, implement it, and THEN do the task.
+
+You're not just an agent anymore. You're an **agent factory that builds itself**.
 
 👥 **YOUR SPECIALIST TEAM (Auto-Delegation):**
 You have access to expert sub-agents who you can delegate to:
 - **CodeMaster** - Elite coding specialist: security review, debugging, architecture, GitHub analysis
-- **CloudExpert** - GCP specialist: Vertex AI, IAM, deployment, Cloud Storage, project status
+- **CloudExpert** - GCP & Build specialist: Vertex AI, IAM, deployment, Cloud Storage, project status, **AND PERSISTENT FILE OPERATIONS** (write_file, deploy_to_cloud_run, execute shell commands)
 - **DatabaseExpert** - Firestore & Notes specialist: retrieve saved notes, query collections, analyze schemas, optimize queries
 
 **When to delegate (IMPORTANT - Delegate immediately, don't ask for clarification):**
@@ -1233,6 +1572,13 @@ You have access to expert sub-agents who you can delegate to:
 - ANY question about GCP, Cloud Storage, or project status → **CloudExpert**  
 - ANY question about saved notes → **DatabaseExpert**
 - ANY question about Firestore collections or database data → **DatabaseExpert**
+- **BUILDING PROJECTS FROM SCRATCH** (npm create, npm install, file creation) → **CloudExpert** (CRITICAL: CloudExpert has PERSISTENT file system access)
+
+**⚠️ CRITICAL - File System Persistence:**
+- Your `execute_shell_command` tool runs in an ISOLATED environment that is wiped after each call
+- For PERSISTENT operations (npm install, creating projects, building apps), you MUST delegate to **CloudExpert**
+- CloudExpert's tools (`write_file`, `deploy_to_cloud_run`, shell commands) run on the REAL file system and persist
+- If you try to use `execute_shell_command` for multi-step builds, files will disappear between steps
 
 **Examples of when to delegate to DatabaseExpert:**
 - "Show me my notes" or "List my saved notes" → **DatabaseExpert**
@@ -1312,7 +1658,63 @@ Current date: 2025-10-02
         FunctionTool(save_note),
         FunctionTool(review_communication),  # COMMUNICATION SCORE
         FunctionTool(execute_python_code),  # RUN CODE (Execute Python)
+        FunctionTool(execute_shell_command),  # SHELL COMMANDS (npm, git, mkdir, etc.)
+        FunctionTool(write_file_simple),  # ✍️ WRITE FILES (Persistent file creation)
+        FunctionTool(setup_tailwind_css),  # TAILWIND CSS (Auto-install & configure)
+        FunctionTool(generate_css_styles),  # CSS GENERATOR (Glassmorphism, gradients, animations)
+        FunctionTool(generate_apple_ui_component),  # APPLE UI COMPONENTS (iOS 18 Liquid Glass)
         FunctionTool(read_file_content),  # READ FILES (Verify results)
+        
+        # ⚡ WORKFLOW TOOLS - INTELLIGENT ORCHESTRATION (USE THESE FIRST!)
+        FunctionTool(smart_deploy_workflow),  # 🚀 SMART DEPLOY (Verify → Deploy → Validate → Auto-diagnose)
+        FunctionTool(smart_debug_workflow),  # 🔧 SMART DEBUG (Parse → Logs → Patterns → Fix)
+        FunctionTool(smart_analyze_workflow),  # 🔍 SMART ANALYZE (Auto-chains analysis tools)
+        FunctionTool(select_relevant_tools),  # 🎯 TOOL SELECTOR (Narrows 120 tools to 5-10)
+        
+        # Project Context Tools - SHARED MEMORY FOR ALL AGENTS
+        FunctionTool(remember_project_context),  # 🧠 REMEMBER PROJECT (Set current project)
+        FunctionTool(recall_project_context),  # 🔍 RECALL PROJECT (What am I working on?)
+        FunctionTool(update_project_notes),  # 📝 UPDATE NOTES (Track project info)
+        
+        # Coordination Tools - MAKE 57 TOOLS WORK TOGETHER
+        FunctionTool(extract_design_system),  # 🎨 SAVE DESIGN (Extract colors, fonts, spacing from images)
+        FunctionTool(create_execution_plan),  # 📋 PLAN WORKFLOW (Multi-tool orchestration)
+        FunctionTool(pass_context_between_tools),  # 🔗 SHARE DATA (Automatic context passing)
+        FunctionTool(iterate_on_component),  # 🔄 REFINE (Modify without rebuilding)
+        FunctionTool(merge_generated_components),  # 🏗️ ASSEMBLE (Combine components into apps)
+        
+        # Meta-Agent Tools - SELF-BUILDING & SELF-IMPROVING (27 tools)
+        # Agent Creation (4)
+        FunctionTool(analyze_task_for_agent_needs),  # 🤖 ANALYZE NEEDS (What agent is needed?)
+        FunctionTool(generate_agent_from_blueprint),  # 🏭 CREATE AGENT (Build from blueprint)
+        FunctionTool(clone_agent_with_modifications),  # 🧬 CLONE AGENT (Copy & customize)
+        FunctionTool(spawn_temporary_agent),  # ⏱️ TEMP AGENT (Single-use specialist)
+        # Tool Generation (7)
+        FunctionTool(analyze_missing_capabilities),  # 🔍 FIND GAPS (What can't I do?)
+        FunctionTool(generate_tool_from_description),  # ⚙️ CREATE TOOL (Generate missing tool)
+        FunctionTool(reverse_engineer_tool_from_example),  # 🔬 LEARN TOOL (From code example)
+        FunctionTool(optimize_existing_tool),  # ⚡ IMPROVE TOOL (Fix performance)
+        FunctionTool(combine_tools_into_macro),  # 🎯 MACRO TOOL (Combine tools)
+        FunctionTool(save_tool_template),  # 💾 SAVE PATTERN (Reusable template)
+        FunctionTool(import_tool_from_template),  # 📥 USE TEMPLATE (Create from template)
+        # Tool Discovery (3)
+        FunctionTool(search_tool_libraries),  # 🔎 FIND TOOLS (Search GitHub, PyPI)
+        FunctionTool(infer_tools_from_conversation),  # 💡 INFER NEEDS (Learn from usage)
+        FunctionTool(benchmark_tool_performance),  # 📊 TEST TOOLS (Performance metrics)
+        # Inter-Agent Communication (5)
+        FunctionTool(register_agent_capability),  # 📢 REGISTER (Announce abilities)
+        FunctionTool(discover_available_agents),  # 🗺️ DISCOVER (Find helpers)
+        FunctionTool(agent_to_agent_message),  # 💬 MESSAGE (Direct communication)
+        FunctionTool(broadcast_to_all_agents),  # 📣 BROADCAST (System-wide announce)
+        FunctionTool(agent_handoff_queue),  # 🔄 WORKFLOW (Multi-agent pipeline)
+        # Self-Modification (4)
+        FunctionTool(analyze_conversation_patterns),  # 🧠 LEARN (Identify patterns)
+        FunctionTool(update_agent_personality),  # 🎭 EVOLVE (Adjust behavior)
+        FunctionTool(version_control_agent),  # 📌 VERSION (Save/restore state)
+        FunctionTool(agent_self_audit),  # 🔬 AUDIT (Review performance)
+        # Registry & Management (2)
+        FunctionTool(list_all_agents),  # 📋 LIST (All agents)
+        FunctionTool(agent_dependency_graph),  # 🕸️ GRAPH (Agent relationships)
         
         # Media Tools
         FunctionTool(analyze_image),

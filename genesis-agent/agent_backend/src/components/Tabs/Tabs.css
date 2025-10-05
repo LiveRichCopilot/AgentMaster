@@ -1,0 +1,26 @@
+/* src/components/Tabs/Tabs.css */
+.tabs-container {
+  display: flex;
+  border-bottom: 1px solid #333; /* Darker border for separation */
+}
+
+.tab {
+  padding: 10px 20px;
+  cursor: pointer;
+  background-color: transparent;
+  border: none;
+  color: #888; /* Inactive tab color */
+  font-size: 14px;
+  font-weight: 500;
+  transition: color 0.2s ease-in-out;
+}
+
+.tab:hover {
+  color: #eee; /* Lighter color on hover */
+}
+
+.tab.active {
+  color: #00dfd8; /* Teal color for the active tab */
+  border-bottom: 2px solid #00dfd8;
+  margin-bottom: -1px; /* Aligns the border with the container's border */
+}
