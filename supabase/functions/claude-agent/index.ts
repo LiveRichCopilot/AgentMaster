@@ -6,7 +6,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-const html = `<!DOCTYPE html>
+Deno.serve((req: Request) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 200, headers: corsHeaders });
+  }
+
+  const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -34,11 +39,6 @@ const html = `<!DOCTYPE html>
       -webkit-backdrop-filter: blur(24px);
       border: 1px solid rgba(255, 255, 255, 0.2);
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-    }
-    .glass-input {
-      background: rgba(0, 0, 0, 0.3);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
     }
     .header {
       padding: 1rem 2rem;
@@ -361,7 +361,7 @@ const html = `<!DOCTYPE html>
     const SUPABASE_URL = 'https://rwybvoxhmnjgunwymujm.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ3eWJ2b3hobW5qZ3Vud3ltdWptIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjgyNDU2MjEsImV4cCI6MjA0MzgyMTYyMX0.67SDuETE3Xw8pVFW_tyLkxBDvQwDyYiSi6Fot6bftvE';
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-    
+
     let apiKey = localStorage.getItem('claude_api_key') || '';
     let currentSessionId = null;
     let messages = [];
@@ -372,12 +372,12 @@ const html = `<!DOCTYPE html>
     async function loadSessions() {
       const { data } = await supabase.from('conversations').select('*').order('updated_at', { ascending: false }).limit(10);
       const list = document.getElementById('sessions');
-      list.innerHTML = (data || []).map(s => `
-        <div class="session-item ${s.id === currentSessionId ? 'active' : ''}" onclick="loadSession('${s.id}')">
-          <div style="font-weight: 600; font-size: 0.875rem;">${s.title}</div>
-          <div style="color: rgba(255,255,255,0.4); font-size: 0.75rem;">${new Date(s.updated_at).toLocaleDateString()}</div>
-        </div>
-      `).join('');
+      list.innerHTML = (data || []).map(s => {
+        const active = s.id === currentSessionId ? 'active' : '';
+        const titleDiv = '<div style="font-weight: 600; font-size: 0.875rem;">' + s.title + '</div>';
+        const dateDiv = '<div style="color: rgba(255,255,255,0.4); font-size: 0.75rem;">' + new Date(s.updated_at).toLocaleDateString() + '</div>';
+        return '<div class="session-item ' + active + '" onclick="loadSession(\'' + s.id + '\')">' + titleDiv + dateDiv + '</div>';
+      }).join('');
     }
 
     async function loadSession(id) {
@@ -407,29 +407,20 @@ const html = `<!DOCTYPE html>
       container.innerHTML = messages.map(m => {
         const isUser = m.role === 'user';
         const content = parseMarkdown(m.content);
-        return `
-          <div class="message ${m.role}">
-            <div class="avatar">${isUser ? '👤' : 'C'}</div>
-            <div class="bubble">${content}</div>
-          </div>
-        `;
+        const avatar = '<div class="avatar">' + (isUser ? '👤' : 'C') + '</div>';
+        const bubble = '<div class="bubble">' + content + '</div>';
+        return '<div class="message ' + m.role + '">' + avatar + bubble + '</div>';
       }).join('');
       container.scrollTop = container.scrollHeight;
       Prism.highlightAll();
     }
 
     function parseMarkdown(text) {
-      return text.replace(/```(\w+)?\n([\s\S]*?)```/g, (_, lang, code) => {
+      return text.replace(/\`\`\`(\w+)?\n([\s\S]*?)\`\`\`/g, function(match, lang, code) {
         const language = lang || 'javascript';
-        return `
-          <div class="code-block">
-            <div class="code-header">
-              <span class="code-lang">${language}</span>
-              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-            </div>
-            <pre><code class="language-${language}">${escapeHtml(code.trim())}</code></pre>
-          </div>
-        `;
+        const header = '<div class="code-header"><span class="code-lang">' + language + '</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>';
+        const codeBlock = '<pre><code class="language-' + language + '">' + escapeHtml(code.trim()) + '</code></pre>';
+        return '<div class="code-block">' + header + codeBlock + '</div>';
       }).replace(/\n/g, '<br>');
     }
 
@@ -443,7 +434,7 @@ const html = `<!DOCTYPE html>
       const code = btn.closest('.code-block').querySelector('code').textContent;
       navigator.clipboard.writeText(code);
       btn.textContent = 'Copied!';
-      setTimeout(() => btn.textContent = 'Copy', 2000);
+      setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
     }
 
     async function sendMessage() {
@@ -472,29 +463,29 @@ const html = `<!DOCTYPE html>
           body: JSON.stringify({
             model: 'claude-3-5-sonnet-20241022',
             max_tokens: 4096,
-            messages: messages.map(m => ({ role: m.role, content: m.content }))
+            messages: messages.map(function(m) { return { role: m.role, content: m.content }; })
           })
         });
-        
+
         const data = await response.json();
         if (data.error) throw new Error(data.error.message);
-        
+
         const reply = data.content[0].text;
         messages.push({ role: 'assistant', content: reply, created_at: new Date().toISOString() });
         await supabase.from('messages').insert({ conversation_id: currentSessionId, role: 'assistant', content: reply });
-        
+
         if (messages.length === 2) {
           const title = text.substring(0, 50);
-          await supabase.from('conversations').update({ title, updated_at: new Date().toISOString() }).eq('id', currentSessionId);
+          await supabase.from('conversations').update({ title: title, updated_at: new Date().toISOString() }).eq('id', currentSessionId);
           loadSessions();
         }
-        
+
         renderMessages();
       } catch (error) {
         messages.push({ role: 'assistant', content: 'Error: ' + error.message, created_at: new Date().toISOString() });
         renderMessages();
       }
-      
+
       document.getElementById('statusText').textContent = 'Ready';
     }
 
@@ -516,10 +507,6 @@ const html = `<!DOCTYPE html>
 </body>
 </html>`;
 
-Deno.serve((req: Request) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { status: 200, headers: corsHeaders });
-  }
   return new Response(html, {
     headers: { ...corsHeaders, "Content-Type": "text/html" },
   });
