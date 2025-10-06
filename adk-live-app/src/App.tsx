@@ -6,14 +6,35 @@ import { ChatMessage } from './components/ChatMessage';
 import { ChatInput } from './components/ChatInput';
 import { VoiceControl } from './components/VoiceControl';
 import { CodeEditor } from './components/CodeEditor';
+import { Settings } from './components/Settings';
+import { StatusBar } from './components/StatusBar';
 import type { Message, AgentStatus, Session } from './types';
-import { adkService } from './services/adkService';
+import { useAgentStore } from './store/useAgentStore';
+import { claudeService } from './services/claudeService';
+import { supabaseService } from './services/supabaseService';
 import { voiceService } from './services/voiceService';
 
 function App() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const {
+    messages,
+    sessions,
+    currentSessionId,
+    isThinking,
+    isStreaming,
+    apiKey,
+    settings,
+    setMessages,
+    addMessage,
+    setSessions,
+    setCurrentSessionId,
+    setIsThinking,
+    setIsStreaming,
+    setTokenUsage,
+    clearMessages,
+  } = useAgentStore();
+
   const [agentStatus, setAgentStatus] = useState<AgentStatus>({
-    online: false,
+    online: !!apiKey,
     thinking: false,
     responding: false,
   });
@@ -21,42 +42,35 @@ function App() {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<string>();
   const [showCodeEditor, setShowCodeEditor] = useState(false);
-  const [code, setCode] = useState('# Write your Python code here\nprint("Hello from LIV!")');
+  const [showSettings, setShowSettings] = useState(false);
+  const [code, setCode] = useState('# Write your Python code here\nprint("Hello from Claude Agent!")');
   const [codeLanguage] = useState('python');
   const [codeOutput, setCodeOutput] = useState<string>();
   const [codeError, setCodeError] = useState<string>();
   const [isRunningCode, setIsRunningCode] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const transcriptTimeoutRef = useRef<number | undefined>(undefined);
+  const transcriptTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
+  // Initialize services
   useEffect(() => {
-    adkService.connect();
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-    const unsubscribeMessage = adkService.onMessage((message) => {
-      setMessages((prev) => [...prev, message]);
-      setAgentStatus((prev) => ({ ...prev, thinking: false, responding: false }));
+    if (supabaseUrl && supabaseKey) {
+      supabaseService.initialize(supabaseUrl, supabaseKey);
+    }
 
-      if (voiceEnabled && message.role === 'assistant') {
-        voiceService.speak(message.content);
-      }
-    });
-
-    const unsubscribeStatus = adkService.onStatus((status) => {
-      setAgentStatus((prev) => ({ ...prev, ...status }));
-    });
+    if (apiKey) {
+      claudeService.initialize(apiKey);
+      setAgentStatus((prev) => ({ ...prev, online: true }));
+    } else {
+      setShowSettings(true);
+    }
 
     loadSessions();
-
-    return () => {
-      unsubscribeMessage();
-      unsubscribeStatus();
-      adkService.disconnect();
-    };
-  }, [voiceEnabled]);
+  }, [apiKey]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -64,14 +78,36 @@ function App() {
 
   const loadSessions = async () => {
     try {
-      const sessionsData = await adkService.getSessions();
-      setSessions(sessionsData);
+      const sessionsData = await supabaseService.getSessions();
+      const formattedSessions: Session[] = sessionsData.map(s => ({
+        id: s.id,
+        name: s.title,
+        createdAt: new Date(s.created_at),
+        lastMessage: new Date(s.updated_at),
+      }));
+      setSessions(formattedSessions);
     } catch (error) {
       console.error('Failed to load sessions:', error);
     }
   };
 
   const handleSendMessage = async (content: string) => {
+    if (!apiKey) {
+      setShowSettings(true);
+      return;
+    }
+
+    // Create or ensure session exists
+    let sessionId = currentSessionId;
+    if (!sessionId) {
+      const newSession = await supabaseService.createSession('New Conversation');
+      if (newSession) {
+        sessionId = newSession.id;
+        setCurrentSessionId(sessionId);
+        await loadSessions();
+      }
+    }
+
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
@@ -79,20 +115,83 @@ function App() {
       timestamp: new Date(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    addMessage(userMessage);
+    setIsThinking(true);
     setAgentStatus((prev) => ({ ...prev, thinking: true }));
 
+    // Save user message
+    if (sessionId) {
+      await supabaseService.saveMessage(sessionId, 'user', content);
+    }
+
     try {
-      await adkService.sendMessage(content);
+      // Convert messages to Claude format
+      const claudeMessages = [...messages, userMessage].map(m => ({
+        role: m.role,
+        content: m.content,
+      }));
+
+      let fullResponse = '';
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: '',
+        timestamp: new Date(),
+      };
+
+      setIsStreaming(true);
+
+      // Stream the response
+      for await (const chunk of claudeService.streamMessage(
+        claudeMessages,
+        settings.model,
+        settings.maxTokens,
+        settings.temperature
+      )) {
+        fullResponse = chunk.text;
+        assistantMessage.content = fullResponse;
+
+        // Update the message in place
+        setMessages([...messages, userMessage, { ...assistantMessage }]);
+
+        if (chunk.done) {
+          setIsStreaming(false);
+          setIsThinking(false);
+          setAgentStatus((prev) => ({ ...prev, thinking: false, responding: false }));
+
+          // Save assistant message
+          if (sessionId) {
+            await supabaseService.saveMessage(sessionId, 'assistant', fullResponse);
+
+            // Update session title with first user message if needed
+            if (messages.length === 0) {
+              const title = content.substring(0, 50) + (content.length > 50 ? '...' : '');
+              await supabaseService.updateSessionTitle(sessionId, title);
+              await loadSessions();
+            }
+          }
+
+          // Speak response if voice enabled
+          if (voiceEnabled) {
+            voiceService.speak(fullResponse);
+          }
+
+          // Estimate token usage (rough estimate)
+          const estimatedTokens = Math.ceil((content.length + fullResponse.length) / 4);
+          setTokenUsage(estimatedTokens);
+        }
+      }
     } catch (error) {
       console.error('Failed to send message:', error);
       const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: (Date.now() + 2).toString(),
         role: 'assistant',
-        content: 'Sorry, I encountered an error. Please make sure the ADK agent is running on http://127.0.0.1:8000',
+        content: 'Sorry, I encountered an error. Please check your API key and try again.',
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev, errorMessage]);
+      addMessage(errorMessage);
+      setIsThinking(false);
+      setIsStreaming(false);
       setAgentStatus((prev) => ({ ...prev, thinking: false }));
     }
   };
@@ -147,14 +246,11 @@ function App() {
     setCodeOutput(undefined);
     setCodeError(undefined);
 
+    // For now, just simulate code execution
+    // In a real implementation, you'd call a backend service
     try {
-      const result = await adkService.executeCode(code, codeLanguage);
-
-      if (result.error) {
-        setCodeError(result.error);
-      } else {
-        setCodeOutput(result.output || 'Code executed successfully (no output)');
-      }
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      setCodeOutput('Code execution feature coming soon!\nThis will integrate with a Python/JS runtime.');
     } catch (error) {
       setCodeError(error instanceof Error ? error.message : 'Failed to execute code');
     } finally {
@@ -162,20 +258,29 @@ function App() {
     }
   };
 
-  const handleNewSession = () => {
-    const newSession: Session = {
-      id: Date.now().toString(),
-      name: `Session ${sessions.length + 1}`,
-      createdAt: new Date(),
-    };
-    setSessions((prev) => [newSession, ...prev]);
-    setCurrentSessionId(newSession.id);
-    setMessages([]);
-    setSidebarOpen(false);
+  const handleNewSession = async () => {
+    const newSession = await supabaseService.createSession('New Conversation');
+    if (newSession) {
+      setCurrentSessionId(newSession.id);
+      clearMessages();
+      await loadSessions();
+      setSidebarOpen(false);
+    }
   };
 
-  const handleSessionSelect = (sessionId: string) => {
+  const handleSessionSelect = async (sessionId: string) => {
     setCurrentSessionId(sessionId);
+
+    // Load messages for this session
+    const messagesData = await supabaseService.getMessages(sessionId);
+    const formattedMessages: Message[] = messagesData.map(m => ({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      timestamp: new Date(m.created_at),
+    }));
+
+    setMessages(formattedMessages);
     setSidebarOpen(false);
   };
 
@@ -185,6 +290,7 @@ function App() {
         agentStatus={agentStatus}
         voiceEnabled={voiceEnabled}
         onVoiceToggle={() => setVoiceEnabled(!voiceEnabled)}
+        onSettingsClick={() => setShowSettings(true)}
       />
 
       <Sidebar
@@ -206,59 +312,59 @@ function App() {
                   exit={{ opacity: 0 }}
                   className="text-center py-20"
                 >
-                  <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-teal-500 to-teal-600 flex items-center justify-center shadow-2xl shadow-teal-500/40">
-                    <span className="text-white font-bold text-2xl">LIV</span>
+                  <div className="w-24 h-24 mx-auto mb-8 rounded-full bg-gradient-to-br from-teal-500 to-teal-600 flex items-center justify-center shadow-2xl shadow-teal-500/40">
+                    <span className="text-white font-bold text-3xl">C</span>
                   </div>
-                  <h2 className="text-2xl font-bold text-white mb-3">
-                    Welcome to LIV Assistant
+                  <h2 className="text-3xl font-bold text-white mb-4">
+                    Welcome to Claude Agent
                   </h2>
-                  <p className="text-white/60 mb-8">
-                    Your intelligent coding companion powered by ADK
+                  <p className="text-white/60 mb-12 text-lg">
+                    Your intelligent coding companion with glassmorphic style
                   </p>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto mb-8">
                     <motion.button
-                      whileHover={{ scale: 1.02 }}
+                      whileHover={{ scale: 1.02, y: -2 }}
                       whileTap={{ scale: 0.98 }}
                       onClick={() => handleSendMessage('Help me write a Python function')}
-                      className="glass rounded-xl p-6 text-left hover:bg-white/15 transition-all duration-300"
+                      className="glass rounded-2xl p-8 text-left hover:bg-white/15 transition-all duration-300 group"
                     >
-                      <div className="text-teal-400 mb-2">💻</div>
-                      <div className="text-white font-medium mb-1">Code with me</div>
-                      <div className="text-white/60 text-sm">Get help writing and debugging code</div>
+                      <div className="text-4xl mb-4 group-hover:scale-110 transition-transform">💻</div>
+                      <div className="text-white font-semibold mb-2 text-lg">Code with Claude</div>
+                      <div className="text-white/60">Get help writing and debugging code</div>
                     </motion.button>
 
                     <motion.button
-                      whileHover={{ scale: 1.02 }}
+                      whileHover={{ scale: 1.02, y: -2 }}
                       whileTap={{ scale: 0.98 }}
                       onClick={() => setShowCodeEditor(!showCodeEditor)}
-                      className="glass rounded-xl p-6 text-left hover:bg-white/15 transition-all duration-300"
+                      className="glass rounded-2xl p-8 text-left hover:bg-white/15 transition-all duration-300 group"
                     >
-                      <div className="text-teal-400 mb-2">⚡</div>
-                      <div className="text-white font-medium mb-1">Live Editor</div>
-                      <div className="text-white/60 text-sm">Write and run code in real-time</div>
+                      <div className="text-4xl mb-4 group-hover:scale-110 transition-transform">⚡</div>
+                      <div className="text-white font-semibold mb-2 text-lg">Live Editor</div>
+                      <div className="text-white/60">Write and run code in real-time</div>
                     </motion.button>
 
                     <motion.button
-                      whileHover={{ scale: 1.02 }}
+                      whileHover={{ scale: 1.02, y: -2 }}
                       whileTap={{ scale: 0.98 }}
                       onClick={() => setSidebarOpen(true)}
-                      className="glass rounded-xl p-6 text-left hover:bg-white/15 transition-all duration-300"
+                      className="glass rounded-2xl p-8 text-left hover:bg-white/15 transition-all duration-300 group"
                     >
-                      <div className="text-teal-400 mb-2">📚</div>
-                      <div className="text-white font-medium mb-1">Sessions</div>
-                      <div className="text-white/60 text-sm">View and manage your chat history</div>
+                      <div className="text-4xl mb-4 group-hover:scale-110 transition-transform">📚</div>
+                      <div className="text-white font-semibold mb-2 text-lg">Sessions</div>
+                      <div className="text-white/60">View and manage your chat history</div>
                     </motion.button>
 
                     <motion.button
-                      whileHover={{ scale: 1.02 }}
+                      whileHover={{ scale: 1.02, y: -2 }}
                       whileTap={{ scale: 0.98 }}
                       onClick={handleStartListening}
-                      className="glass rounded-xl p-6 text-left hover:bg-white/15 transition-all duration-300"
+                      className="glass rounded-2xl p-8 text-left hover:bg-white/15 transition-all duration-300 group"
                     >
-                      <div className="text-teal-400 mb-2">🎤</div>
-                      <div className="text-white font-medium mb-1">Voice Chat</div>
-                      <div className="text-white/60 text-sm">Talk to LIV with your voice</div>
+                      <div className="text-4xl mb-4 group-hover:scale-110 transition-transform">🎤</div>
+                      <div className="text-white font-semibold mb-2 text-lg">Voice Chat</div>
+                      <div className="text-white/60">Talk to Claude with your voice</div>
                     </motion.button>
                   </div>
 
@@ -282,31 +388,31 @@ function App() {
                   {messages.map((message) => (
                     <ChatMessage key={message.id} message={message} />
                   ))}
-                  {agentStatus.thinking && (
+                  {isThinking && (
                     <motion.div
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
-                      className="flex items-center gap-3 mb-4"
+                      className="flex items-center gap-3 mb-6"
                     >
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-teal-500 to-teal-600 flex items-center justify-center shadow-lg shadow-teal-500/30">
-                        <span className="font-bold text-xs text-white">L</span>
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal-500 to-teal-600 flex items-center justify-center shadow-lg shadow-teal-500/40">
+                        <span className="font-bold text-sm text-white">C</span>
                       </div>
                       <div className="glass rounded-2xl px-6 py-4 bg-white/10">
-                        <div className="flex gap-1">
+                        <div className="flex gap-1.5">
                           <motion.div
-                            animate={{ scale: [1, 1.2, 1] }}
+                            animate={{ scale: [1, 1.3, 1] }}
                             transition={{ repeat: Infinity, duration: 1, delay: 0 }}
-                            className="w-2 h-2 rounded-full bg-teal-400"
+                            className="w-2.5 h-2.5 rounded-full bg-teal-400"
                           />
                           <motion.div
-                            animate={{ scale: [1, 1.2, 1] }}
+                            animate={{ scale: [1, 1.3, 1] }}
                             transition={{ repeat: Infinity, duration: 1, delay: 0.2 }}
-                            className="w-2 h-2 rounded-full bg-teal-400"
+                            className="w-2.5 h-2.5 rounded-full bg-teal-400"
                           />
                           <motion.div
-                            animate={{ scale: [1, 1.2, 1] }}
+                            animate={{ scale: [1, 1.3, 1] }}
                             transition={{ repeat: Infinity, duration: 1, delay: 0.4 }}
-                            className="w-2 h-2 rounded-full bg-teal-400"
+                            className="w-2.5 h-2.5 rounded-full bg-teal-400"
                           />
                         </div>
                       </div>
@@ -317,7 +423,11 @@ function App() {
             </AnimatePresence>
 
             {showCodeEditor && (
-              <div className="mt-8">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-8"
+              >
                 <CodeEditor
                   code={code}
                   language={codeLanguage}
@@ -327,15 +437,19 @@ function App() {
                   error={codeError}
                   isRunning={isRunningCode}
                 />
-              </div>
+              </motion.div>
             )}
 
             <div ref={messagesEndRef} />
           </div>
         </div>
 
-        <ChatInput onSend={handleSendMessage} disabled={agentStatus.thinking} />
+        <ChatInput onSend={handleSendMessage} disabled={isThinking || isStreaming} />
       </main>
+
+      <StatusBar />
+
+      <Settings isOpen={showSettings} onClose={() => setShowSettings(false)} />
 
       <button
         onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -350,7 +464,7 @@ function App() {
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="fixed bottom-24 right-6 z-30"
+          className="fixed bottom-28 right-6 z-30"
         >
           <VoiceControl
             isListening={isListening}

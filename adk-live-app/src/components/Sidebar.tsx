@@ -4,7 +4,7 @@ import type { Session } from '../types';
 interface SidebarProps {
   isOpen: boolean;
   sessions: Session[];
-  currentSessionId?: string;
+  currentSessionId?: string | null;
   onSessionSelect: (sessionId: string) => void;
   onNewSession: () => void;
 }
