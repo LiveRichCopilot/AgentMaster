@@ -152,6 +152,19 @@ from .pdf_tools import (
     create_pdf_invoice
 )
 
+# Import Advanced Code Tools - Cursor-level coding power
+from .advanced_code_tools import (
+    read_entire_file,
+    edit_file_section,
+    search_and_replace_in_file,
+    insert_code_at_line,
+    delete_lines_from_file,
+    refactor_function_name,
+    analyze_python_file,
+    multi_file_search_replace,
+    create_new_file_from_template
+)
+
 PROJECT_ID = "studio-2416451423-f2d96"
 LOCATION = "us-central1"
 
@@ -1797,6 +1810,17 @@ Current date: 2025-10-02
         FunctionTool(extract_text_from_pdf),  # 📖 EXTRACT TEXT (PDF → Text)
         FunctionTool(create_pdf_from_markdown),  # 📝 MARKDOWN → PDF (Convert markdown)
         FunctionTool(create_pdf_invoice),  # 🧾 INVOICE PDF (Professional invoices)
+        
+        # Advanced Code Tools - Cursor-Level Coding Power (9 tools)
+        FunctionTool(read_entire_file),  # 📖 READ FILE (Complete file with line numbers)
+        FunctionTool(edit_file_section),  # ✏️ EDIT SECTION (Edit specific lines)
+        FunctionTool(search_and_replace_in_file),  # 🔍 FIND/REPLACE (Search & replace)
+        FunctionTool(insert_code_at_line),  # ➕ INSERT CODE (Add code at line)
+        FunctionTool(delete_lines_from_file),  # ➖ DELETE LINES (Remove lines)
+        FunctionTool(refactor_function_name),  # 🔄 REFACTOR (Rename functions)
+        FunctionTool(analyze_python_file),  # 🔬 ANALYZE (Parse file structure)
+        FunctionTool(multi_file_search_replace),  # 🌐 MULTI-FILE EDIT (Edit multiple files)
+        FunctionTool(create_new_file_from_template),  # 📝 CREATE FROM TEMPLATE (Generate files)
         
         # Specialist Agent Callers - TEMPORARILY DISABLED (deployment issue)
         # FunctionTool(call_code_master),
