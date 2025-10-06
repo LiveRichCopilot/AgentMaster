@@ -108,6 +108,24 @@ from .sub_agents.code_master import code_master
 from .sub_agents.cloud_expert import cloud_expert
 from .sub_agents.database_expert import database_expert
 
+# Import Switch App File Manager - comprehensive file upload and storage
+from .switch_app_file_manager import (
+    upload_file_to_storage,
+    process_image_file,
+    get_user_files,
+    delete_file,
+    generate_signed_url,
+    create_file_collection
+)
+
+# Import Switch App Agent Builder - create customer service agents
+from .switch_app_agent_builder import (
+    create_switch_user_agent,
+    create_switch_customer_service_agent,
+    integrate_notebooklm_with_agent,
+    generate_switch_app_chatbot_ui_code
+)
+
 PROJECT_ID = "studio-2416451423-f2d96"
 LOCATION = "us-central1"
 
@@ -1721,6 +1739,18 @@ Current date: 2025-10-02
         FunctionTool(extract_text_from_image),
         FunctionTool(analyze_video),
         FunctionTool(transcribe_video),
+        
+        # Switch App Tools - File Management & Agent Builder (10 tools)
+        FunctionTool(upload_file_to_storage),  # 📤 UPLOAD (Files to Cloud Storage)
+        FunctionTool(process_image_file),  # 🖼️ PROCESS IMAGE (Vision analysis)
+        FunctionTool(get_user_files),  # 📂 GET FILES (List user's files)
+        FunctionTool(delete_file),  # 🗑️ DELETE FILE (Remove from storage)
+        FunctionTool(generate_signed_url),  # 🔗 SIGNED URL (Secure file access)
+        FunctionTool(create_file_collection),  # 📁 COLLECTION (Organize files)
+        FunctionTool(create_switch_user_agent),  # 🤖 USER AGENT (Personal AI assistant)
+        FunctionTool(create_switch_customer_service_agent),  # 💬 CS AGENT (Customer support)
+        FunctionTool(integrate_notebooklm_with_agent),  # 📚 NOTEBOOK (Knowledge base)
+        FunctionTool(generate_switch_app_chatbot_ui_code),  # 💻 CHATBOT UI (React Native code)
         
         # Specialist Agent Callers - TEMPORARILY DISABLED (deployment issue)
         # FunctionTool(call_code_master),
