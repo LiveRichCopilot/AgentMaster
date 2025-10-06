@@ -1,12 +1,4 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
-};
-
-const html = `<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -34,11 +26,6 @@ const html = `<!DOCTYPE html>
       -webkit-backdrop-filter: blur(24px);
       border: 1px solid rgba(255, 255, 255, 0.2);
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-    }
-    .glass-input {
-      background: rgba(0, 0, 0, 0.3);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
     }
     .header {
       padding: 1rem 2rem;
@@ -361,7 +348,7 @@ const html = `<!DOCTYPE html>
     const SUPABASE_URL = 'https://rwybvoxhmnjgunwymujm.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ3eWJ2b3hobW5qZ3Vud3ltdWptIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjgyNDU2MjEsImV4cCI6MjA0MzgyMTYyMX0.67SDuETE3Xw8pVFW_tyLkxBDvQwDyYiSi6Fot6bftvE';
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-    
+
     let apiKey = localStorage.getItem('claude_api_key') || '';
     let currentSessionId = null;
     let messages = [];
@@ -372,12 +359,13 @@ const html = `<!DOCTYPE html>
     async function loadSessions() {
       const { data } = await supabase.from('conversations').select('*').order('updated_at', { ascending: false }).limit(10);
       const list = document.getElementById('sessions');
-      list.innerHTML = (data || []).map(s => `
-        <div class="session-item ${s.id === currentSessionId ? 'active' : ''}" onclick="loadSession('${s.id}')">
+      list.innerHTML = (data || []).map(s => {
+        const active = s.id === currentSessionId ? 'active' : '';
+        return `<div class="session-item ${active}" onclick="loadSession('${s.id}')">
           <div style="font-weight: 600; font-size: 0.875rem;">${s.title}</div>
           <div style="color: rgba(255,255,255,0.4); font-size: 0.75rem;">${new Date(s.updated_at).toLocaleDateString()}</div>
-        </div>
-      `).join('');
+        </div>`;
+      }).join('');
     }
 
     async function loadSession(id) {
@@ -475,26 +463,26 @@ const html = `<!DOCTYPE html>
             messages: messages.map(m => ({ role: m.role, content: m.content }))
           })
         });
-        
+
         const data = await response.json();
         if (data.error) throw new Error(data.error.message);
-        
+
         const reply = data.content[0].text;
         messages.push({ role: 'assistant', content: reply, created_at: new Date().toISOString() });
         await supabase.from('messages').insert({ conversation_id: currentSessionId, role: 'assistant', content: reply });
-        
+
         if (messages.length === 2) {
           const title = text.substring(0, 50);
           await supabase.from('conversations').update({ title, updated_at: new Date().toISOString() }).eq('id', currentSessionId);
           loadSessions();
         }
-        
+
         renderMessages();
       } catch (error) {
         messages.push({ role: 'assistant', content: 'Error: ' + error.message, created_at: new Date().toISOString() });
         renderMessages();
       }
-      
+
       document.getElementById('statusText').textContent = 'Ready';
     }
 
@@ -514,13 +502,4 @@ const html = `<!DOCTYPE html>
     }
   </script>
 </body>
-</html>`;
-
-Deno.serve((req: Request) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { status: 200, headers: corsHeaders });
-  }
-  return new Response(html, {
-    headers: { ...corsHeaders, "Content-Type": "text/html" },
-  });
-});
+</html>
