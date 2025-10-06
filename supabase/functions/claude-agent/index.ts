@@ -508,6 +508,9 @@ Deno.serve((req: Request) => {
 </html>`;
 
   return new Response(html, {
-    headers: { ...corsHeaders, "Content-Type": "text/html" },
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "text/html; charset=utf-8"
+    },
   });
 });
