@@ -144,6 +144,14 @@ from .switch_integration_bridge import (
     bidirectional_sync
 )
 
+# Import PDF Tools - generate and process PDFs
+from .pdf_tools import (
+    generate_pdf_report,
+    extract_text_from_pdf,
+    create_pdf_from_markdown,
+    create_pdf_invoice
+)
+
 PROJECT_ID = "studio-2416451423-f2d96"
 LOCATION = "us-central1"
 
@@ -1783,6 +1791,12 @@ Current date: 2025-10-02
         FunctionTool(create_switch_feature_from_prompt),  # ✨ BUILD FROM PROMPT (Natural language → Switch feature)
         FunctionTool(get_switch_app_status),  # 📊 SWITCH STATUS (Check Switch app health)
         FunctionTool(bidirectional_sync),  # ↔️ BIDIRECTIONAL SYNC (Real-time sync)
+        
+        # PDF Tools - Generate and Process PDFs (4 tools)
+        FunctionTool(generate_pdf_report),  # 📄 PDF REPORT (Text → PDF with formatting)
+        FunctionTool(extract_text_from_pdf),  # 📖 EXTRACT TEXT (PDF → Text)
+        FunctionTool(create_pdf_from_markdown),  # 📝 MARKDOWN → PDF (Convert markdown)
+        FunctionTool(create_pdf_invoice),  # 🧾 INVOICE PDF (Professional invoices)
         
         # Specialist Agent Callers - TEMPORARILY DISABLED (deployment issue)
         # FunctionTool(call_code_master),
