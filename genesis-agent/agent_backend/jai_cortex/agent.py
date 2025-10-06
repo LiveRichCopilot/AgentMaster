@@ -126,6 +126,24 @@ from .switch_app_agent_builder import (
     generate_switch_app_chatbot_ui_code
 )
 
+# Import Workflow Orchestrator - make tools work together
+from .workflow_orchestrator import (
+    build_switch_app_agent_workflow,
+    upload_and_process_file_workflow,
+    deploy_agent_to_cloud_workflow,
+    intelligent_tool_chain
+)
+
+# Import Switch Integration Bridge - connect Agent Master with Switch app
+from .switch_integration_bridge import (
+    deploy_feature_to_switch,
+    deploy_to_switch_firebase,
+    sync_agent_to_switch,
+    create_switch_feature_from_prompt,
+    get_switch_app_status,
+    bidirectional_sync
+)
+
 PROJECT_ID = "studio-2416451423-f2d96"
 LOCATION = "us-central1"
 
@@ -1751,6 +1769,20 @@ Current date: 2025-10-02
         FunctionTool(create_switch_customer_service_agent),  # 💬 CS AGENT (Customer support)
         FunctionTool(integrate_notebooklm_with_agent),  # 📚 NOTEBOOK (Knowledge base)
         FunctionTool(generate_switch_app_chatbot_ui_code),  # 💻 CHATBOT UI (React Native code)
+        
+        # Workflow Orchestration - Make Tools Work Together (4 tools)
+        FunctionTool(build_switch_app_agent_workflow),  # 🔄 FULL SETUP (Complete Switch app setup)
+        FunctionTool(upload_and_process_file_workflow),  # 📤🔍 UPLOAD+ANALYZE (Auto-process files)
+        FunctionTool(deploy_agent_to_cloud_workflow),  # 🚀 DEPLOY AGENT (Full deployment pipeline)
+        FunctionTool(intelligent_tool_chain),  # 🧠 AUTO-CHAIN (Smart tool orchestration)
+        
+        # Switch Integration Bridge - Connect Agent Master ↔ Switch (6 tools)
+        FunctionTool(deploy_feature_to_switch),  # 🎯 DEPLOY FEATURE (Push to Switch app)
+        FunctionTool(deploy_to_switch_firebase),  # 🔥 FIREBASE DEPLOY (Live to Switch)
+        FunctionTool(sync_agent_to_switch),  # 🔗 SYNC AGENT (Agent Master → Switch)
+        FunctionTool(create_switch_feature_from_prompt),  # ✨ BUILD FROM PROMPT (Natural language → Switch feature)
+        FunctionTool(get_switch_app_status),  # 📊 SWITCH STATUS (Check Switch app health)
+        FunctionTool(bidirectional_sync),  # ↔️ BIDIRECTIONAL SYNC (Real-time sync)
         
         # Specialist Agent Callers - TEMPORARILY DISABLED (deployment issue)
         # FunctionTool(call_code_master),
